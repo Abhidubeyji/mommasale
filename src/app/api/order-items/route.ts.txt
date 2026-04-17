@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/db"
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const orderId = searchParams.get("orderId")
+
+    if (!orderId) {
+      return NextResponse.json({ error: "orderId required" }, { status: 400 })
+    }
+
+    const items = await db.orderItem.findMany({
+      where: { orderId },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            productPrice: true
+          }
+        }
+      }
+    })
+
+    return NextResponse.json(items)
+  } catch (error) {
+    console.error(error)
+    return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
+  }
+}

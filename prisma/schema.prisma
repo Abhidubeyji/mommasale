@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id          String    @id
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@map("categories")
+}
+
+model OrderCounter {
+  id            String @id @default("order_counter")
+  currentNumber Int    @default(0)
+  lastMonth     String @default("")
+  lastYear      String @default("")
+
+  @@map("order_counter")
+}
+
+model OrderItem {
+  id            String   @id
+  orderId       String
+  productId     String
+  quantity      Float
+  unitPrice     Float
+  productPrice  Float
+  adminDiscount Float    @default(0)
+  extraDiscount Float    @default(0)
+  finalPrice    Float
+  createdAt     DateTime @default(now())
+  product       Product  @relation(fields: [productId], references: [id])
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model Order {
+  id            String      @id
+  orderId       String      @unique
+  shopkeeperId  String
+  userId        String
+  status        String      @default("PENDING")
+  subtotal      Float       @default(0)
+  adminDiscount Float       @default(0)
+  extraDiscount Float       @default(0)
+  totalAmount   Float       @default(0)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  approvedAt    DateTime?
+  dispatchedAt  DateTime?
+  items         OrderItem[]
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopkeeper    Shopkeeper  @relation(fields: [shopkeeperId], references: [id], onDelete: Cascade)
+  payments      Payment[]
+
+  @@map("orders")
+}
+
+model Outstanding {
+  id           String     @id
+  shopkeeperId String     @unique
+  totalOrders  Float      @default(0)
+  totalPaid    Float      @default(0)
+  balance      Float      @default(0)
+  lastUpdated  DateTime   @default(now())
+  shopkeeper   Shopkeeper @relation(fields: [shopkeeperId], references: [id], onDelete: Cascade)
+
+  @@map("outstanding")
+}
+
+model Payment {
+  id             String      @id
+  orderId        String?
+  userId         String
+  shopkeeperId   String?
+  amount         Float
+  method         String
+  transactionRef String?
+  notes          String?
+  isAdvance      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  shopkeeper     Shopkeeper? @relation(fields: [shopkeeperId], references: [id])
+  user           User        @relation(fields: [userId], references: [id])
+  order          Order?      @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+model Product {
+  id                   String      @id
+  name                 String
+  categoryId           String?
+  unitPrice            Float
+  packingDetail        String
+  packingQty           Float
+  productPrice         Float
+  description          String?
+  discountPercent      Float       @default(0)
+  extraDiscountPercent Float       @default(0)
+  isActive             Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  orderItems           OrderItem[]
+  category             Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@map("products")
+}
+
+model Shopkeeper {
+  id          String        @id
+  shopName    String
+  ownerName   String
+  address     String?
+  mobile      String
+  city        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  createdById String
+  orders      Order[]
+  outstanding Outstanding?
+  payments    Payment[]
+  createdBy   User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("shopkeepers")
+}
+
+model Unit {
+  id        String   @id
+  name      String   @unique
+  symbol    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("units")
+}
+
+model User {
+  id          String        @id
+  email       String?
+  password    String
+  name        String
+  role        String        @default("SALES")
+  isActive    Boolean       @default(true)
+  canExport   Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orders      Order[]
+  payments    Payment[]
+  shopkeepers Shopkeeper[]
+
+  @@map("users")
+}
