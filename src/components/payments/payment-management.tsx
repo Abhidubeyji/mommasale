@@ -361,11 +361,12 @@ export function PaymentManagement() {
 
     const headers = [
       "Date", "Time", "Type", "Shop Name", "Owner", "Mobile", 
-      "Order ID", "Advance", "Total Amount", "Outstanding", "Method", "Reference", "Notes", "Recorded By"
+      "Order ID", "Advance", "Total Amount", "Round Off", "Outstanding", "Method", "Reference", "Notes", "Recorded By"
     ]
     
     const rows = filteredPayments.map(p => {
       const shopkeeperOutstanding = shopkeepers.find(sk => sk.id === p.shopkeeper?.id)?.outstanding
+      const roundOff = p.order?.totalAmount ? Math.round(p.order.totalAmount) - p.order.totalAmount : 0
       return [
         format(new Date(p.createdAt), "dd/MM/yyyy"),
         format(new Date(p.createdAt), "HH:mm"),
@@ -376,6 +377,7 @@ export function PaymentManagement() {
         p.order?.orderId || "",
         p.amount,
         p.order?.totalAmount || "",
+        roundOff,
         shopkeeperOutstanding ? Math.abs(shopkeeperOutstanding.balance) : 0,
         p.method,
         p.transactionRef || "",
@@ -982,6 +984,7 @@ export function PaymentManagement() {
                         <TableHead className="whitespace-nowrap">Order ID</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Advance</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Total Amount</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Round Off</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Outstanding</TableHead>
                         <TableHead className="whitespace-nowrap">Method</TableHead>
                         <TableHead className="whitespace-nowrap">Reference</TableHead>
@@ -1096,6 +1099,20 @@ export function PaymentManagement() {
                             )}
                           </TableCell>
                           <TableCell className="text-right">
+                            {payment.order && payment.order.totalAmount ? (
+                              (() => {
+                                const roundOff = Math.round(payment.order.totalAmount) - payment.order.totalAmount
+                                return (
+                                  <p className={`font-medium ${roundOff >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {roundOff >= 0 ? '+' : ''}₹{roundOff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                )
+                              })()
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
                             {payment.shopkeeper && shopkeeperOutstanding ? (
                               <p className={`font-medium ${shopkeeperOutstanding.balance > 0 ? 'text-red-600 dark:text-red-400' : shopkeeperOutstanding.balance < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
                                 ₹{Math.abs(shopkeeperOutstanding.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1136,7 +1153,7 @@ export function PaymentManagement() {
                     })}
                     {filteredPayments.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={session?.user?.role === "ADMIN" ? 11 : 10} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={session?.user?.role === "ADMIN" ? 12 : 11} className="text-center text-muted-foreground py-8">
                           <div className="flex flex-col items-center gap-2">
                             <CreditCard className="h-8 w-8 text-muted-foreground" />
                             <p>No payments found</p>
