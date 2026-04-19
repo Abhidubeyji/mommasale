@@ -66,7 +66,6 @@ interface Payment {
     id: string
     orderId: string
     totalAmount: number
-    status: string
   } | null
 }
 
@@ -79,6 +78,7 @@ interface Shopkeeper {
   outstanding?: {
     id: string
     totalOrders: number
+    roundOff: number
     totalPaid: number
     balance: number
     lastUpdated: string
@@ -104,6 +104,7 @@ interface OutstandingData {
     mobile: string
   }
   totalOrders: number
+  roundOff: number
   totalPaid: number
   balance: number
   lastUpdated: string
@@ -330,6 +331,7 @@ export function PaymentManagement() {
         mobile: sk.mobile
       },
       totalOrders: sk.outstanding?.totalOrders || 0,
+      roundOff: sk.outstanding?.roundOff || 0,
       totalPaid: sk.outstanding?.totalPaid || 0,
       balance: sk.outstanding?.balance || 0,
       lastUpdated: sk.outstanding?.lastUpdated || new Date().toISOString()
@@ -404,18 +406,23 @@ export function PaymentManagement() {
     }
 
     const headers = [
-      "Shop Name", "Owner Name", "Mobile", "Total Orders", "Total Paid", "Balance", "Last Updated"
+      "Shop Name", "Owner Name", "Mobile", "Total Orders", "Round Off", "Grand Total", "Total Paid", "Balance", "Last Updated"
     ]
     
-    const rows = filteredOutstanding.map(o => [
-      o.shopkeeper.shopName,
-      o.shopkeeper.ownerName,
-      o.shopkeeper.mobile,
-      o.totalOrders,
-      o.totalPaid,
-      o.balance,
-      format(new Date(o.lastUpdated), "dd/MM/yyyy")
-    ])
+    const rows = filteredOutstanding.map(o => {
+      const grandTotal = o.totalOrders + o.roundOff
+      return [
+        o.shopkeeper.shopName,
+        o.shopkeeper.ownerName,
+        o.shopkeeper.mobile,
+        o.totalOrders,
+        o.roundOff,
+        grandTotal,
+        o.totalPaid,
+        o.balance,
+        format(new Date(o.lastUpdated), "dd/MM/yyyy")
+      ]
+    })
 
     const worksheetData = [headers, ...rows]
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
@@ -491,8 +498,8 @@ export function PaymentManagement() {
           <p className="text-sm sm:text-base text-muted-foreground">Track payments and outstanding balances</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {session?.user?.role !== "VIEWER" && (
+        {session?.user?.role !== "VIEWER" && (
+          <div className="flex flex-wrap gap-2">
             <Dialog open={dialogOpen} onOpenChange={(open) => {
               setDialogOpen(open)
               if (!open) setFormData(initialFormState)
@@ -773,14 +780,14 @@ export function PaymentManagement() {
               </form>
             </DialogContent>
           </Dialog>
-          )}
           {(session?.user?.role === "ADMIN" || session?.user?.canExport === true) && (
             <Button variant="outline" onClick={exportPaymentsToExcel} className="gap-2">
               <Download className="h-4 w-4" />
               Export Excel
             </Button>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -979,7 +986,7 @@ export function PaymentManagement() {
                         <TableHead className="whitespace-nowrap">Method</TableHead>
                         <TableHead className="whitespace-nowrap">Reference</TableHead>
                         <TableHead className="whitespace-nowrap">Recorded By</TableHead>
-                        {session?.user?.role !== "VIEWER" && (
+                        {session?.user?.role === "ADMIN" && (
                           <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                         )}
                       </TableRow>
@@ -1111,22 +1118,17 @@ export function PaymentManagement() {
                               {payment.user.name}
                             </div>
                           </TableCell>
-                          {session?.user?.role !== "VIEWER" && (
+                          {session?.user?.role === "ADMIN" && (
                             <TableCell className="text-right">
-                              {/* Non-admin users cannot delete payments linked to approved/dispatched orders */}
-                              {(session?.user?.role === "ADMIN" || 
-                                !payment.order || 
-                                (payment.order.status !== "APPROVED" && payment.order.status !== "DISPATCHED")) && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDelete(payment.id)}
-                                  className="hover:bg-red-100 dark:hover:bg-gray-800"
-                                  title="Delete Payment"
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-500" />
-                                </Button>
-                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(payment.id)}
+                                className="hover:bg-red-100 dark:hover:bg-gray-800"
+                                title="Delete Payment"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
                             </TableCell>
                           )}
                         </TableRow>
@@ -1134,7 +1136,7 @@ export function PaymentManagement() {
                     })}
                     {filteredPayments.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={session?.user?.role !== "VIEWER" ? 11 : 10} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={session?.user?.role === "ADMIN" ? 11 : 10} className="text-center text-muted-foreground py-8">
                           <div className="flex flex-col items-center gap-2">
                             <CreditCard className="h-8 w-8 text-muted-foreground" />
                             <p>No payments found</p>
@@ -1191,13 +1193,17 @@ export function PaymentManagement() {
                     <TableRow>
                       <TableHead>Shopkeeper</TableHead>
                       <TableHead className="text-right">Total Orders</TableHead>
+                      <TableHead className="text-right">Round Off</TableHead>
+                      <TableHead className="text-right">Grand Total</TableHead>
                       <TableHead className="text-right">Total Paid</TableHead>
                       <TableHead className="text-right">Balance</TableHead>
                       <TableHead>Last Updated</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredOutstanding.map((item) => (
+                    {filteredOutstanding.map((item) => {
+                      const grandTotal = item.totalOrders + item.roundOff
+                      return (
                       <TableRow key={item.shopkeeperId} className={item.balance > 0 ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-green-50/50 dark:bg-green-900/10'}>
                         <TableCell>
                           <div>
@@ -1211,6 +1217,12 @@ export function PaymentManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                           ₹{item.totalOrders.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right text-blue-600">
+                          ₹{item.roundOff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-orange-600">
+                          ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell className="text-right text-green-600">
                           ₹{item.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1227,10 +1239,11 @@ export function PaymentManagement() {
                           {format(new Date(item.lastUpdated), "dd MMM yyyy")}
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )
+                    })}
                     {filteredOutstanding.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                           <div className="flex flex-col items-center gap-2">
                             <CheckCircle className="h-8 w-8 text-green-500" />
                             <p>No outstanding balances</p>

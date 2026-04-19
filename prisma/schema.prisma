@@ -73,6 +73,7 @@ model Outstanding {
   id           String     @id
   shopkeeperId String     @unique
   totalOrders  Float      @default(0)
+  roundOff     Float      @default(0)
   totalPaid    Float      @default(0)
   balance      Float      @default(0)
   lastUpdated  DateTime   @default(now())

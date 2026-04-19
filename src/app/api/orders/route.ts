@@ -336,6 +336,10 @@ export async function PUT(request: NextRequest) {
       } else if (status === "DISPATCHED") {
         updateData.dispatchedAt = new Date()
 
+        // Calculate round off for this order
+        const orderRoundOff = existingOrder.roundOff || 0
+        const grandTotal = existingOrder.totalAmount + orderRoundOff
+
         // Update outstanding balance
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: existingOrder.shopkeeperId }
@@ -346,7 +350,8 @@ export async function PUT(request: NextRequest) {
             where: { shopkeeperId: existingOrder.shopkeeperId },
             data: {
               totalOrders: { increment: existingOrder.totalAmount },
-              balance: { increment: existingOrder.totalAmount },
+              roundOff: { increment: orderRoundOff },
+              balance: { increment: grandTotal },
               lastUpdated: new Date()
             }
           })
@@ -356,7 +361,8 @@ export async function PUT(request: NextRequest) {
               id: randomUUID(),
               shopkeeperId: existingOrder.shopkeeperId,
               totalOrders: existingOrder.totalAmount,
-              balance: existingOrder.totalAmount
+              roundOff: orderRoundOff,
+              balance: grandTotal
             }
           })
         }
@@ -426,6 +432,9 @@ export async function DELETE(request: NextRequest) {
     if (session.user.role === "ADMIN") {
       // If deleting a DISPATCHED order, we need to revert the outstanding balance
       if (order.status === "DISPATCHED") {
+        const orderRoundOff = order.roundOff || 0
+        const grandTotal = order.totalAmount + orderRoundOff
+        
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: order.shopkeeperId }
         })
@@ -435,7 +444,8 @@ export async function DELETE(request: NextRequest) {
             where: { shopkeeperId: order.shopkeeperId },
             data: {
               totalOrders: { decrement: order.totalAmount },
-              balance: { decrement: order.totalAmount },
+              roundOff: { decrement: orderRoundOff },
+              balance: { decrement: grandTotal },
               lastUpdated: new Date()
             }
           })
