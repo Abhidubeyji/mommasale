@@ -45,7 +45,7 @@ async function generateOrderId(): Promise<string> {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -88,7 +88,15 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" }
     })
 
-    return NextResponse.json(orders)
+    // Filter location data for SALES users
+    const filteredOrders = session.user.role === "SALES"
+      ? orders.map(order => {
+          const { latitude, longitude, ...rest } = order as typeof order & { latitude?: number; longitude?: number }
+          return rest
+        })
+      : orders
+
+    return NextResponse.json(filteredOrders)
   } catch (error) {
     console.error("Get orders error:", error)
     return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 })
@@ -99,13 +107,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || session.user.role === "VIEWER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
-    const { shopkeeperId, items, notes } = body
+    const { shopkeeperId, items, notes, latitude, longitude } = body
 
     if (!shopkeeperId || !items || items.length === 0) {
       return NextResponse.json({ error: "Shopkeeper and items are required" }, { status: 400 })
@@ -114,8 +122,8 @@ export async function POST(request: NextRequest) {
     // Validate extra discount (max 100%)
     for (const item of items) {
       if (item.extraDiscount > 100) {
-        return NextResponse.json({ 
-          error: "Extra discount cannot exceed 100%" 
+        return NextResponse.json({
+          error: "Extra discount cannot exceed 100%"
         }, { status: 400 })
       }
     }
@@ -169,6 +177,8 @@ export async function POST(request: NextRequest) {
         extraDiscount: extraDiscountTotal,
         totalAmount,
         notes,
+        latitude: latitude || null,
+        longitude: longitude || null,
         items: {
           create: orderItems
         }
@@ -197,7 +207,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -427,7 +437,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -452,7 +462,7 @@ export async function DELETE(request: NextRequest) {
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: order.shopkeeperId }
         })
-        
+
         if (outstanding) {
           await db.outstanding.update({
             where: { shopkeeperId: order.shopkeeperId },
@@ -464,11 +474,11 @@ export async function DELETE(request: NextRequest) {
           })
         }
       }
-      
+
       await db.order.delete({
         where: { id }
       })
-      
+
       return NextResponse.json({ message: "Order deleted" })
     }
 
@@ -477,16 +487,16 @@ export async function DELETE(request: NextRequest) {
       if (order.status !== "PENDING" && order.status !== "REJECTED") {
         return NextResponse.json({ error: "Cannot delete orders after admin approval" }, { status: 400 })
       }
-      
+
       // Sales can only delete their own orders
       if (order.userId !== session.user.id) {
         return NextResponse.json({ error: "You can only delete your own orders" }, { status: 401 })
       }
-      
+
       await db.order.delete({
         where: { id }
       })
-      
+
       return NextResponse.json({ message: "Order deleted" })
     }
 

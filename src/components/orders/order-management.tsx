@@ -75,6 +75,8 @@ interface Order {
   createdAt: string
   approvedAt: string | null
   dispatchedAt: string | null
+  latitude?: number | null
+  longitude?: number | null
   shopkeeper: {
     id: string
     shopName: string
@@ -300,6 +302,34 @@ export function OrderManagement() {
     setOrderItems(orderItems.filter((_, i) => i !== index))
   }
 
+  // Helper function to get current location silently
+  const getCurrentLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null)
+        return
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          })
+        },
+        () => {
+          // Silently fail - location is optional
+          resolve(null)
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 60000
+        }
+      )
+    })
+  }
+
   const handleCreateOrder = async () => {
     if (!selectedShopkeeper) {
       toast.error("Please select a shopkeeper")
@@ -312,6 +342,9 @@ export function OrderManagement() {
 
     setCreating(true)
     try {
+      // Get location silently (optional, won't block order creation)
+      const location = await getCurrentLocation()
+
       const res = await fetch("/api/orders", {
         method: "POST",
         credentials: 'include',
@@ -326,7 +359,9 @@ export function OrderManagement() {
             adminDiscount: item.adminDiscount,
             extraDiscount: item.extraDiscount
           })),
-          notes: orderNotes
+          notes: orderNotes,
+          latitude: location?.latitude,
+          longitude: location?.longitude
         })
       })
 
@@ -1826,6 +1861,34 @@ export function OrderManagement() {
                             {selectedOrder.user.email && (
                               <p className="text-sm text-muted-foreground">{selectedOrder.user.email}</p>
                             )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Location Info - Admin and Viewer Only (Hidden from SALES) */}
+                  {(session?.user?.role === "ADMIN" || session?.user?.role === "VIEWER") && selectedOrder.latitude && selectedOrder.longitude && (
+                    <Card className="border-orange-100 dark:border-gray-800">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                          </svg>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Order Location</p>
+                            <p className="font-medium text-sm">
+                              {selectedOrder.latitude.toFixed(6)}, {selectedOrder.longitude.toFixed(6)}
+                            </p>
+                            <a
+                              href={`https://www.google.com/maps?q=${selectedOrder.latitude},${selectedOrder.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-orange-600 hover:text-orange-700 underline"
+                            >
+                              View on Google Maps
+                            </a>
                           </div>
                         </div>
                       </CardContent>

@@ -163,10 +163,15 @@ export function LoginForm() {
           {/* Footer */}
           <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-orange-100 text-center">
             <p className="text-gray-400 text-xs sm:text-sm mb-1">
-              © 2024 Mom Masale. All rights reserved.
+              © 2026 Mom Masale. All rights reserved.
             </p>
             <p className="text-xs text-muted-foreground">
               Developed by <span className="font-semibold text-orange-600">Intech IT Solution</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              <a href="mailto:info.intechitsolution@gmail.com" className="hover:text-orange-600 transition-colors">
+                info.intechitsolution@gmail.com
+              </a>
             </p>
           </div>
         </CardContent>

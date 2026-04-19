@@ -139,18 +139,54 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Delete product (Admin only)
+// DELETE - Delete product (Admin only) or bulk delete
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
+    const ids = searchParams.get("ids")
 
+    // Bulk delete
+    if (ids) {
+      const productIds = ids.split(",")
+      let deleted = 0
+      let deactivated = 0
+
+      for (const productId of productIds) {
+        // Check if product is used in any orders
+        const orderItems = await db.orderItem.findFirst({
+          where: { productId }
+        })
+
+        if (orderItems) {
+          // If used in orders, just deactivate instead of deleting
+          await db.product.update({
+            where: { id: productId },
+            data: { isActive: false }
+          })
+          deactivated++
+        } else {
+          await db.product.delete({
+            where: { id: productId }
+          })
+          deleted++
+        }
+      }
+
+      return NextResponse.json({
+        message: `Deleted ${deleted} product(s), deactivated ${deactivated} product(s)`,
+        deleted,
+        deactivated
+      })
+    }
+
+    // Single delete
     if (!id) {
       return NextResponse.json({ error: "Product ID required" }, { status: 400 })
     }
