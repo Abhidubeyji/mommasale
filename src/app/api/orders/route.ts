@@ -45,7 +45,7 @@ async function generateOrderId(): Promise<string> {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-
+    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -88,15 +88,7 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" }
     })
 
-    // Filter location data for SALES users
-    const filteredOrders = session.user.role === "SALES"
-      ? orders.map(order => {
-          const { latitude, longitude, ...rest } = order as typeof order & { latitude?: number; longitude?: number }
-          return rest
-        })
-      : orders
-
-    return NextResponse.json(filteredOrders)
+    return NextResponse.json(orders)
   } catch (error) {
     console.error("Get orders error:", error)
     return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 })
@@ -107,7 +99,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-
+    
     if (!session || session.user.role === "VIEWER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -122,8 +114,8 @@ export async function POST(request: NextRequest) {
     // Validate extra discount (max 100%)
     for (const item of items) {
       if (item.extraDiscount > 100) {
-        return NextResponse.json({
-          error: "Extra discount cannot exceed 100%"
+        return NextResponse.json({ 
+          error: "Extra discount cannot exceed 100%" 
         }, { status: 400 })
       }
     }
@@ -207,13 +199,13 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-
+    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
-    const { id, status, shopkeeperId, items, notes, roundOff } = body
+    const { id, status, shopkeeperId, items, notes } = body
 
     if (!id) {
       return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
@@ -401,31 +393,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(order)
     }
 
-    // Round Off update - Only Admin and Viewer can update roundOff
-    if (roundOff !== undefined) {
-      if (session.user.role !== "ADMIN" && session.user.role !== "VIEWER") {
-        return NextResponse.json({ error: "Only admin or viewer can update round off" }, { status: 401 })
-      }
-
-      const order = await db.order.update({
-        where: { id },
-        data: { roundOff: roundOff },
-        include: {
-          shopkeeper: true,
-          user: { select: { id: true, name: true, email: true } },
-          items: {
-            include: {
-              product: {
-                include: { category: true }
-              }
-            }
-          }
-        }
-      })
-
-      return NextResponse.json(order)
-    }
-
     return NextResponse.json({ error: "No update data provided" }, { status: 400 })
   } catch (error) {
     console.error("Update order error:", error)
@@ -437,7 +404,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-
+    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -462,7 +429,7 @@ export async function DELETE(request: NextRequest) {
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: order.shopkeeperId }
         })
-
+        
         if (outstanding) {
           await db.outstanding.update({
             where: { shopkeeperId: order.shopkeeperId },
@@ -474,11 +441,11 @@ export async function DELETE(request: NextRequest) {
           })
         }
       }
-
+      
       await db.order.delete({
         where: { id }
       })
-
+      
       return NextResponse.json({ message: "Order deleted" })
     }
 
@@ -487,16 +454,16 @@ export async function DELETE(request: NextRequest) {
       if (order.status !== "PENDING" && order.status !== "REJECTED") {
         return NextResponse.json({ error: "Cannot delete orders after admin approval" }, { status: 400 })
       }
-
+      
       // Sales can only delete their own orders
       if (order.userId !== session.user.id) {
         return NextResponse.json({ error: "You can only delete your own orders" }, { status: 401 })
       }
-
+      
       await db.order.delete({
         where: { id }
       })
-
+      
       return NextResponse.json({ message: "Order deleted" })
     }
 
