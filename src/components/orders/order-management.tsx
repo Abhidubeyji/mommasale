@@ -70,13 +70,10 @@ interface Order {
   adminDiscount: number
   extraDiscount: number
   totalAmount: number
-  roundOff: number
   notes: string | null
   createdAt: string
   approvedAt: string | null
   dispatchedAt: string | null
-  latitude?: number | null
-  longitude?: number | null
   shopkeeper: {
     id: string
     shopName: string
@@ -151,10 +148,6 @@ export function OrderManagement() {
   const [editNotes, setEditNotes] = useState("")
   const [editCategory, setEditCategory] = useState("") // New: category filter for edit dialog
   const [editProductSearch, setEditProductSearch] = useState("") // New: product search for edit dialog
-
-  // Round off edit state
-  const [editingRoundOffOrderId, setEditingRoundOffOrderId] = useState<string | null>(null)
-  const [roundOffValue, setRoundOffValue] = useState<string>("")
 
   useEffect(() => {
     if (session) {
@@ -302,34 +295,6 @@ export function OrderManagement() {
     setOrderItems(orderItems.filter((_, i) => i !== index))
   }
 
-  // Helper function to get current location silently
-  const getCurrentLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        resolve(null)
-        return
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          })
-        },
-        () => {
-          // Silently fail - location is optional
-          resolve(null)
-        },
-        {
-          enableHighAccuracy: false,
-          timeout: 5000,
-          maximumAge: 60000
-        }
-      )
-    })
-  }
-
   const handleCreateOrder = async () => {
     if (!selectedShopkeeper) {
       toast.error("Please select a shopkeeper")
@@ -342,9 +307,6 @@ export function OrderManagement() {
 
     setCreating(true)
     try {
-      // Get location silently (optional, won't block order creation)
-      const location = await getCurrentLocation()
-
       const res = await fetch("/api/orders", {
         method: "POST",
         credentials: 'include',
@@ -359,9 +321,7 @@ export function OrderManagement() {
             adminDiscount: item.adminDiscount,
             extraDiscount: item.extraDiscount
           })),
-          notes: orderNotes,
-          latitude: location?.latitude,
-          longitude: location?.longitude
+          notes: orderNotes
         })
       })
 
@@ -548,52 +508,6 @@ export function OrderManagement() {
     }
   }
 
-  // Handle round off update - Only Admin and Viewer can update
-  const handleUpdateRoundOff = async (orderId: string) => {
-    const roundOff = parseFloat(roundOffValue)
-    if (isNaN(roundOff)) {
-      toast.error("Please enter a valid number")
-      return
-    }
-
-    try {
-      const res = await fetch("/api/orders", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: orderId, roundOff })
-      })
-
-      if (res.ok) {
-        toast.success("Round off updated successfully")
-        setEditingRoundOffOrderId(null)
-        setRoundOffValue("")
-        fetchData()
-      } else {
-        const data = await res.json()
-        toast.error(data.error || "Failed to update round off")
-      }
-    } catch (error) {
-      toast.error("An error occurred")
-    }
-  }
-
-  // Start editing round off
-  const startEditingRoundOff = (order: Order) => {
-    setEditingRoundOffOrderId(order.id)
-    // Use stored roundOff or auto-calculated value as default
-    const autoRoundOff = Math.round(order.totalAmount) - order.totalAmount
-    const displayRoundOff = (order.roundOff !== undefined && order.roundOff !== 0) 
-      ? order.roundOff 
-      : autoRoundOff
-    setRoundOffValue(displayRoundOff.toFixed(2))
-  }
-
-  // Cancel editing round off
-  const cancelEditingRoundOff = () => {
-    setEditingRoundOffOrderId(null)
-    setRoundOffValue("")
-  }
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "PENDING": return <Clock className="h-4 w-4 text-yellow-500" />
@@ -630,15 +544,9 @@ export function OrderManagement() {
     acc.totalAmount += order.totalAmount
     acc.subtotal += order.subtotal
     acc.totalDiscount += order.adminDiscount + order.extraDiscount
-    // Auto-calculate round off if not explicitly set
-    const autoRoundOff = Math.round(order.totalAmount) - order.totalAmount
-    const displayRoundOff = (order.roundOff !== undefined && order.roundOff !== 0) 
-      ? order.roundOff 
-      : autoRoundOff
-    acc.roundOff += displayRoundOff
     acc.orderCount += 1
     return acc
-  }, { totalAmount: 0, subtotal: 0, totalDiscount: 0, roundOff: 0, orderCount: 0 })
+  }, { totalAmount: 0, subtotal: 0, totalDiscount: 0, orderCount: 0 })
 
   // Export orders to Excel
   const exportOrdersToExcel = () => {
@@ -653,13 +561,6 @@ export function OrderManagement() {
     // Flatten orders with items
     const rows: unknown[][] = []
     ordersToExport.forEach(order => {
-      // Auto-calculate round off if not explicitly set
-      const autoRoundOff = Math.round(order.totalAmount) - order.totalAmount
-      const displayRoundOff = (order.roundOff !== undefined && order.roundOff !== 0) 
-        ? order.roundOff 
-        : autoRoundOff
-      const grandTotal = order.totalAmount + displayRoundOff
-      
       if (order.items.length === 0) {
         rows.push([
           order.orderId,
@@ -667,7 +568,7 @@ export function OrderManagement() {
           order.shopkeeper.ownerName,
           order.shopkeeper.mobile,
           order.user?.name || "",
-          "", "", "", "", "", "", "", "", 0, 0, 0, 0, displayRoundOff, grandTotal,
+          "", "", "", "", "", "", "", "", 0, 0, 0, 0,
           order.status,
           format(new Date(order.createdAt), "dd/MM/yyyy HH:mm")
         ])
@@ -691,8 +592,6 @@ export function OrderManagement() {
             order.subtotal,
             order.adminDiscount + order.extraDiscount,
             order.totalAmount,
-            displayRoundOff,
-            grandTotal,
             order.status,
             format(new Date(order.createdAt), "dd/MM/yyyy HH:mm")
           ])
@@ -703,7 +602,7 @@ export function OrderManagement() {
     const headers = [
       "Order ID", "Shop Name", "Owner", "Mobile", "Created By",
       "Product", "Category", "Packing", "Qty", "Unit Price", "Product Price",
-      "Admin Disc %", "Extra Disc %", "Item Amount", "Subtotal", "Total Discount", "Order Total", "Round Off", "Grand Total",
+      "Admin Disc %", "Extra Disc %", "Item Amount", "Subtotal", "Total Discount", "Order Total",
       "Status", "Date"
     ]
 
@@ -834,7 +733,7 @@ export function OrderManagement() {
       {/* Filtered Orders Summary */}
       <Card className="border-orange-200 dark:border-gray-800 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-gray-900 dark:to-gray-800 shrink-0">
         <CardContent className="pt-3 pb-3 sm:pt-4 sm:pb-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="text-center">
               <p className="text-xs sm:text-sm text-muted-foreground">Total Orders</p>
               <p className="text-xl sm:text-2xl font-bold text-orange-600 dark:text-orange-400">{filteredOrdersTotals.orderCount}</p>
@@ -848,12 +747,8 @@ export function OrderManagement() {
               <p className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400">₹{filteredOrdersTotals.totalDiscount.toFixed(2)}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs sm:text-sm text-muted-foreground">Round Off</p>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">₹{filteredOrdersTotals.roundOff.toFixed(2)}</p>
-            </div>
-            <div className="text-center">
               <p className="text-xs sm:text-sm text-muted-foreground">Grand Total</p>
-              <p className="text-xl sm:text-2xl font-bold text-orange-600 dark:text-orange-400">₹{(filteredOrdersTotals.totalAmount + filteredOrdersTotals.roundOff).toFixed(2)}</p>
+              <p className="text-xl sm:text-2xl font-bold text-orange-600 dark:text-orange-400">₹{filteredOrdersTotals.totalAmount.toFixed(2)}</p>
             </div>
           </div>
         </CardContent>
@@ -914,8 +809,6 @@ export function OrderManagement() {
                           <TableHead className="text-right whitespace-nowrap">Discount %</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Extra Discount %</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
-                          <TableHead className="text-right whitespace-nowrap">Round Off</TableHead>
-                          <TableHead className="text-right whitespace-nowrap">Grand Total</TableHead>
                           <TableHead className="whitespace-nowrap">Status</TableHead>
                           <TableHead className="whitespace-nowrap">Date</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
@@ -965,76 +858,6 @@ export function OrderManagement() {
                             )}
                             {row.isFirstRow && (
                               <>
-                                <TableCell rowSpan={row.rowSpan} className="text-right whitespace-nowrap">
-                                  {/* Calculate auto round off */}
-                                  {(() => {
-                                    const total = row.order.totalAmount
-                                    const roundedTotal = Math.round(total)
-                                    const autoRoundOff = roundedTotal - total
-                                    // Use stored roundOff only if it's not 0 (explicitly set), otherwise use auto-calculated
-                                    const displayRoundOff = (row.order.roundOff !== undefined && row.order.roundOff !== 0) 
-                                      ? row.order.roundOff 
-                                      : autoRoundOff
-                                    
-                                    // Sales users: Show auto-calculated value, no edit
-                                    if (session?.user?.role === "SALES") {
-                                      return <span className="font-medium">₹{displayRoundOff.toFixed(2)}</span>
-                                    }
-                                    
-                                    // Admin/Viewer users: Can edit
-                                    return editingRoundOffOrderId === row.order.id ? (
-                                      <div className="flex items-center gap-1 justify-end">
-                                        <Input
-                                          type="number"
-                                          step="0.01"
-                                          value={roundOffValue}
-                                          onChange={(e) => setRoundOffValue(e.target.value)}
-                                          className="w-20 h-8 text-right"
-                                          placeholder="0"
-                                        />
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleUpdateRoundOff(row.order.id)}
-                                          className="h-8 w-8 hover:bg-green-100"
-                                          title="Save"
-                                        >
-                                          <Save className="h-4 w-4 text-green-500" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={cancelEditingRoundOff}
-                                          className="h-8 w-8 hover:bg-red-100"
-                                          title="Cancel"
-                                        >
-                                          <XCircle className="h-4 w-4 text-red-500" />
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div 
-                                        className="flex items-center gap-1 justify-end cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded px-1 py-0.5"
-                                        onClick={() => startEditingRoundOff(row.order)}
-                                        title="Click to edit"
-                                      >
-                                        <span className="font-medium">₹{displayRoundOff.toFixed(2)}</span>
-                                        <Edit className="h-3 w-3 text-muted-foreground" />
-                                      </div>
-                                    )
-                                  })()}
-                                </TableCell>
-                                <TableCell rowSpan={row.rowSpan} className="text-right whitespace-nowrap font-bold text-orange-600 dark:text-orange-400">
-                                  {/* Grand Total = Total + Round Off */}
-                                  {(() => {
-                                    const total = row.order.totalAmount
-                                    const autoRoundOff = Math.round(total) - total
-                                    const displayRoundOff = (row.order.roundOff !== undefined && row.order.roundOff !== 0) 
-                                      ? row.order.roundOff 
-                                      : autoRoundOff
-                                    const grandTotal = total + displayRoundOff
-                                    return `₹${grandTotal.toFixed(2)}`
-                                  })()}
-                                </TableCell>
                                 <TableCell rowSpan={row.rowSpan} className="whitespace-nowrap">
                                   <Badge className={getStatusColor(row.order.status)}>
                                     <span className="flex items-center gap-1">
@@ -1048,18 +871,20 @@ export function OrderManagement() {
                                 </TableCell>
                                 <TableCell rowSpan={row.rowSpan} className="text-right whitespace-nowrap">
                                   <div className="flex justify-end gap-1 sm:gap-2">
-                                    {/* Admin can edit/delete ANY order in any status */}
+                                    {/* Admin can edit ANY order EXCEPT DISPATCHED, can delete ANY order */}
                                     {session?.user?.role === "ADMIN" && (
                                       <>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => openEditDialog(row.order)}
-                                          className="hover:bg-blue-100 dark:hover:bg-gray-800"
-                                          title="Edit Order"
-                                        >
-                                          <Edit className="h-4 w-4 text-blue-500" />
-                                        </Button>
+                                        {row.order.status !== "DISPATCHED" && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => openEditDialog(row.order)}
+                                            className="hover:bg-blue-100 dark:hover:bg-gray-800"
+                                            title="Edit Order"
+                                          >
+                                            <Edit className="h-4 w-4 text-blue-500" />
+                                          </Button>
+                                        )}
                                         <Button
                                           variant="ghost"
                                           size="icon"
@@ -1114,7 +939,7 @@ export function OrderManagement() {
                         ))}
                         {tabOrders.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={session?.user?.role === "ADMIN" ? 17 : 16} className="text-center text-muted-foreground py-8">
+                            <TableCell colSpan={session?.user?.role === "ADMIN" ? 15 : 14} className="text-center text-muted-foreground py-8">
                               No orders found
                             </TableCell>
                           </TableRow>
@@ -1867,34 +1692,6 @@ export function OrderManagement() {
                     </Card>
                   )}
 
-                  {/* Location Info - Admin and Viewer Only (Hidden from SALES) */}
-                  {(session?.user?.role === "ADMIN" || session?.user?.role === "VIEWER") && selectedOrder.latitude && selectedOrder.longitude && (
-                    <Card className="border-orange-100 dark:border-gray-800">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                          </svg>
-                          <div>
-                            <p className="text-sm text-muted-foreground">Order Location</p>
-                            <p className="font-medium text-sm">
-                              {selectedOrder.latitude.toFixed(6)}, {selectedOrder.longitude.toFixed(6)}
-                            </p>
-                            <a
-                              href={`https://www.google.com/maps?q=${selectedOrder.latitude},${selectedOrder.longitude}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-orange-600 hover:text-orange-700 underline"
-                            >
-                              View on Google Maps
-                            </a>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
                   {/* Order Items - Editable for Admin and Sales (if pending) */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -1985,19 +1782,21 @@ export function OrderManagement() {
               </div>
 
               <DialogFooter className="flex-wrap gap-2 shrink-0 p-4 sm:p-6 border-t">
-                {/* Admin actions - can edit/delete ANY order, approve/reject/dispatch */}
+                {/* Admin actions - can edit/delete ANY order EXCEPT DISPATCHED (only delete), approve/reject/dispatch */}
                 {session?.user?.role === "ADMIN" && (
                   <>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        openEditDialog(selectedOrder)
-                        setDetailsDialogOpen(false)
-                      }}
-                    >
-                      <Edit className="mr-2 h-4 w-4" />
-                      Edit Order
-                    </Button>
+                    {selectedOrder.status !== "DISPATCHED" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          openEditDialog(selectedOrder)
+                          setDetailsDialogOpen(false)
+                        }}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit Order
+                      </Button>
+                    )}
                     {selectedOrder.status === "PENDING" && (
                       <>
                         <Button

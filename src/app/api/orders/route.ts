@@ -222,7 +222,12 @@ export async function PUT(request: NextRequest) {
 
     // If updating items (full edit)
     if (items && Array.isArray(items)) {
-      // Admin can edit any order in any status
+      // Cannot edit DISPATCHED orders - only delete is allowed
+      if (existingOrder.status === "DISPATCHED") {
+        return NextResponse.json({ error: "Cannot edit dispatched orders. Only delete is allowed." }, { status: 400 })
+      }
+      
+      // Admin can edit PENDING, APPROVED, REJECTED orders
       // Sales users can only edit PENDING orders (before admin approval)
       if (session.user.role === "SALES") {
         if (existingOrder.status !== "PENDING" && existingOrder.status !== "REJECTED") {
@@ -336,9 +341,9 @@ export async function PUT(request: NextRequest) {
       } else if (status === "DISPATCHED") {
         updateData.dispatchedAt = new Date()
 
-        // Calculate round off for this order
-        const orderRoundOff = existingOrder.roundOff || 0
-        const grandTotal = existingOrder.totalAmount + orderRoundOff
+        // Calculate round off for this order (rounded total - actual total)
+        const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
+        const grandTotal = Math.round(existingOrder.totalAmount)
 
         // Update outstanding balance
         const outstanding = await db.outstanding.findUnique({
@@ -432,8 +437,8 @@ export async function DELETE(request: NextRequest) {
     if (session.user.role === "ADMIN") {
       // If deleting a DISPATCHED order, we need to revert the outstanding balance
       if (order.status === "DISPATCHED") {
-        const orderRoundOff = order.roundOff || 0
-        const grandTotal = order.totalAmount + orderRoundOff
+        const orderRoundOff = Math.round(order.totalAmount) - order.totalAmount
+        const grandTotal = Math.round(order.totalAmount)
         
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: order.shopkeeperId }
