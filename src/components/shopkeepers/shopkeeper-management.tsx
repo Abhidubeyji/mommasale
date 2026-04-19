@@ -41,6 +41,7 @@ interface Shopkeeper {
   createdBy: { id: string; name: string }
   outstanding?: {
     totalOrders: number
+    roundOff: number
     totalPaid: number
     balance: number
   }
@@ -59,7 +60,6 @@ const initialFormState = {
 
 export function ShopkeeperManagement() {
   const { data: session } = useSession()
-  const isViewer = session?.user?.role === "VIEWER"
   const [shopkeepers, setShopkeepers] = useState<Shopkeeper[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -175,17 +175,21 @@ export function ShopkeeperManagement() {
 
     const headers = ["Shop Name", "Owner Name", "Mobile", "Address", "City", "Orders Count", "Outstanding Balance", "Created By", "Created Date"]
     
-    const rows = filteredShopkeepers.map(sk => [
-      sk.shopName,
-      sk.ownerName,
-      sk.mobile,
-      sk.address || "",
-      sk.city || "",
-      sk._count?.orders || 0,
-      sk.outstanding?.balance || 0,
-      sk.createdBy?.name || "",
-      sk.createdAt ? format(new Date(sk.createdAt), "dd/MM/yyyy") : ""
-    ])
+    const rows = filteredShopkeepers.map(sk => {
+      const grandTotal = Math.round((sk.outstanding?.totalOrders || 0) + (sk.outstanding?.roundOff || 0))
+      const outstanding = grandTotal - (sk.outstanding?.totalPaid || 0)
+      return [
+        sk.shopName,
+        sk.ownerName,
+        sk.mobile,
+        sk.address || "",
+        sk.city || "",
+        sk._count?.orders || 0,
+        outstanding,
+        sk.createdBy?.name || "",
+        sk.createdAt ? format(new Date(sk.createdAt), "dd/MM/yyyy") : ""
+      ]
+    })
 
     const worksheetData = [headers, ...rows]
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
@@ -221,20 +225,19 @@ export function ShopkeeperManagement() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {!isViewer && (
-            <Dialog open={dialogOpen} onOpenChange={(open) => {
-              setDialogOpen(open)
-              if (!open) {
-                setEditingShopkeeper(null)
-                setFormData(initialFormState)
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Shopkeeper
-                </Button>
-              </DialogTrigger>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open)
+            if (!open) {
+              setEditingShopkeeper(null)
+              setFormData(initialFormState)
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Shopkeeper
+              </Button>
+            </DialogTrigger>
             <DialogContent className="sm:max-w-lg w-[95vw] max-w-[95vw] sm:w-auto sm:max-w-lg p-0">
               <form onSubmit={handleSubmit}>
                 <DialogHeader className="p-4 sm:p-6 pb-0">
@@ -311,7 +314,6 @@ export function ShopkeeperManagement() {
               </form>
             </DialogContent>
           </Dialog>
-          )}
           {(session?.user?.role === "ADMIN" || session?.user?.canExport === true) && (
             <Button variant="outline" onClick={exportToExcel} className="gap-2">
               <Download className="h-4 w-4" />
@@ -358,28 +360,26 @@ export function ShopkeeperManagement() {
                       <p className="font-medium">{shopkeeper.shopName}</p>
                       <p className="text-sm text-muted-foreground">{shopkeeper.ownerName}</p>
                     </div>
-                    {!isViewer && (
-                      <div className="flex gap-1">
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(shopkeeper)}
+                        className="h-8 w-8"
+                      >
+                        <Pencil className="h-4 w-4 text-orange-500" />
+                      </Button>
+                      {session?.user?.role === "ADMIN" && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleEdit(shopkeeper)}
+                          onClick={() => handleDelete(shopkeeper.id)}
                           className="h-8 w-8"
                         >
-                          <Pencil className="h-4 w-4 text-orange-500" />
+                          <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
-                        {session?.user?.role === "ADMIN" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(shopkeeper.id)}
-                            className="h-8 w-8"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Phone className="h-3 w-3" />
@@ -400,7 +400,11 @@ export function ShopkeeperManagement() {
                   <div className="flex justify-between items-center mt-3 pt-3 border-t border-orange-100 dark:border-gray-800">
                     <Badge variant="secondary">{shopkeeper._count?.orders || 0} orders</Badge>
                     <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                      ₹{(shopkeeper.outstanding?.balance || 0).toLocaleString()} due
+                      ₹{(() => {
+                        const grandTotal = Math.round((shopkeeper.outstanding?.totalOrders || 0) + (shopkeeper.outstanding?.roundOff || 0))
+                        const outstanding = grandTotal - (shopkeeper.outstanding?.totalPaid || 0)
+                        return Math.abs(outstanding).toLocaleString()
+                      })()} due
                     </span>
                   </div>
                 </CardContent>
@@ -427,9 +431,7 @@ export function ShopkeeperManagement() {
                   )}
                   <TableHead className="text-right">Orders</TableHead>
                   <TableHead className="text-right">Outstanding</TableHead>
-                  {!isViewer && (
-                    <TableHead className="text-right">Actions</TableHead>
-                  )}
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -463,35 +465,39 @@ export function ShopkeeperManagement() {
                       <Badge variant="secondary">{shopkeeper._count?.orders || 0}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      <span className={shopkeeper.outstanding?.balance && shopkeeper.outstanding.balance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
-                        ₹{(shopkeeper.outstanding?.balance || 0).toLocaleString()}
+                      <span className={(() => {
+                        const grandTotal = Math.round((shopkeeper.outstanding?.totalOrders || 0) + (shopkeeper.outstanding?.roundOff || 0))
+                        const outstanding = grandTotal - (shopkeeper.outstanding?.totalPaid || 0)
+                        return outstanding > 0 ? "text-red-600 dark:text-red-400" : outstanding < 0 ? "text-green-600 dark:text-green-400" : "text-gray-600"
+                      })()}>
+                        {(() => {
+                          const grandTotal = Math.round((shopkeeper.outstanding?.totalOrders || 0) + (shopkeeper.outstanding?.roundOff || 0))
+                          const outstanding = grandTotal - (shopkeeper.outstanding?.totalPaid || 0)
+                          return `₹${Math.abs(outstanding).toLocaleString()}`
+                        })()}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      {!isViewer ? (
-                        <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(shopkeeper)}
+                          className="hover:bg-orange-100 dark:hover:bg-gray-800"
+                        >
+                          <Pencil className="h-4 w-4 text-orange-500" />
+                        </Button>
+                        {session?.user?.role === "ADMIN" && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleEdit(shopkeeper)}
-                            className="hover:bg-orange-100 dark:hover:bg-gray-800"
+                            onClick={() => handleDelete(shopkeeper.id)}
+                            className="hover:bg-red-100 dark:hover:bg-gray-800"
                           >
-                            <Pencil className="h-4 w-4 text-orange-500" />
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
-                          {session?.user?.role === "ADMIN" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(shopkeeper.id)}
-                              className="hover:bg-red-100 dark:hover:bg-gray-800"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

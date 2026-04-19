@@ -11,6 +11,7 @@ interface DashboardStats {
   pendingApprovals: number
   totalPayments: number
   outstandingBalance: number
+  grandTotal: number
   recentOrders: Array<{
     id: string
     orderId: string
@@ -32,26 +33,36 @@ export function DashboardContent() {
 
   const fetchDashboardStats = async () => {
     try {
-      const [ordersRes, paymentsRes, outstandingRes] = await Promise.all([
+      const [ordersRes, paymentsRes, shopkeepersRes] = await Promise.all([
         fetch("/api/orders"),
         fetch("/api/payments"),
-        fetch("/api/reports?type=outstanding")
+        fetch("/api/shopkeepers")
       ])
 
       const orders = await ordersRes.json()
       const payments = await paymentsRes.json()
-      const outstanding = await outstandingRes.json()
+      const shopkeepers = await shopkeepersRes.json()
 
       const totalOrders = orders.length
       const pendingApprovals = orders.filter((o: { status: string }) => o.status === "PENDING").length
+      
+      // Calculate Grand Total from all orders
+      const grandTotal = orders.reduce((sum: number, o: { totalAmount: number }) => {
+        return sum + Math.round(o.totalAmount)
+      }, 0)
+      
+      // Calculate Total Payments
       const totalPayments = payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
-      const outstandingBalance = outstanding.data?.reduce((sum: number, o: { balance: number }) => sum + o.balance, 0) || 0
+      
+      // Outstanding = Grand Total - Total Payments
+      const outstandingBalance = grandTotal - totalPayments
 
       setStats({
         totalOrders,
         pendingApprovals,
         totalPayments,
         outstandingBalance,
+        grandTotal,
         recentOrders: orders.slice(0, 5)
       })
     } catch (error) {
@@ -88,8 +99,8 @@ export function DashboardContent() {
           <Skeleton className="h-8 w-48 mb-2" />
           <Skeleton className="h-4 w-64" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-32" />
           ))}
         </div>
@@ -109,7 +120,7 @@ export function DashboardContent() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="border-orange-200 dark:border-gray-800 hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
@@ -136,11 +147,24 @@ export function DashboardContent() {
 
         <Card className="border-orange-200 dark:border-gray-800 hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Grand Total</CardTitle>
+            <TrendingUp className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              ₹{(stats?.grandTotal || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total order value</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-orange-200 dark:border-gray-800 hover:shadow-lg transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Payments</CardTitle>
             <CreditCard className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{(stats?.totalPayments || 0).toLocaleString()}</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">₹{(stats?.totalPayments || 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground mt-1">Total received</p>
           </CardContent>
         </Card>
@@ -154,7 +178,7 @@ export function DashboardContent() {
             <div className="text-2xl font-bold text-red-600 dark:text-red-400">
               ₹{(stats?.outstandingBalance || 0).toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Total pending</p>
+            <p className="text-xs text-muted-foreground mt-1">Grand Total - Payments</p>
           </CardContent>
         </Card>
       </div>
@@ -181,7 +205,8 @@ export function DashboardContent() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">₹{order.totalAmount.toLocaleString()}</p>
+                    <p className="font-medium">₹{Math.round(order.totalAmount).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Grand Total</p>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(order.status)}`}>
                       {order.status}
                     </span>

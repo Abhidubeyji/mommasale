@@ -321,21 +321,27 @@ export function PaymentManagement() {
 
   // Calculate outstanding data
   const outstandingData: OutstandingData[] = shopkeepers
-    .filter(sk => sk.outstanding && sk.outstanding.balance !== 0)
-    .map(sk => ({
-      shopkeeperId: sk.id,
-      shopkeeper: {
-        id: sk.id,
-        shopName: sk.shopName,
-        ownerName: sk.ownerName,
-        mobile: sk.mobile
-      },
-      totalOrders: sk.outstanding?.totalOrders || 0,
-      roundOff: sk.outstanding?.roundOff || 0,
-      totalPaid: sk.outstanding?.totalPaid || 0,
-      balance: sk.outstanding?.balance || 0,
-      lastUpdated: sk.outstanding?.lastUpdated || new Date().toISOString()
-    }))
+    .filter(sk => sk.outstanding)
+    .map(sk => {
+      const grandTotal = Math.round((sk.outstanding?.totalOrders || 0) + (sk.outstanding?.roundOff || 0))
+      const totalPaid = sk.outstanding?.totalPaid || 0
+      const outstanding = grandTotal - totalPaid
+      return {
+        shopkeeperId: sk.id,
+        shopkeeper: {
+          id: sk.id,
+          shopName: sk.shopName,
+          ownerName: sk.ownerName,
+          mobile: sk.mobile
+        },
+        totalOrders: sk.outstanding?.totalOrders || 0,
+        roundOff: sk.outstanding?.roundOff || 0,
+        totalPaid: totalPaid,
+        balance: outstanding,
+        lastUpdated: sk.outstanding?.lastUpdated || new Date().toISOString()
+      }
+    })
+    .filter(o => o.balance !== 0)
     .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
 
   const totalOutstanding = outstandingData
@@ -408,20 +414,20 @@ export function PaymentManagement() {
     }
 
     const headers = [
-      "Shop Name", "Owner Name", "Mobile", "Total Orders", "Round Off", "Grand Total", "Total Paid", "Balance", "Last Updated"
+      "Shop Name", "Owner Name", "Mobile", "Total Orders", "Grand Total", "Total Paid", "Outstanding", "Last Updated"
     ]
     
     const rows = filteredOutstanding.map(o => {
-      const grandTotal = o.totalOrders + o.roundOff
+      const grandTotal = Math.round(o.totalOrders + o.roundOff)
+      const outstanding = grandTotal - o.totalPaid
       return [
         o.shopkeeper.shopName,
         o.shopkeeper.ownerName,
         o.shopkeeper.mobile,
         o.totalOrders,
-        o.roundOff,
         grandTotal,
         o.totalPaid,
-        o.balance,
+        outstanding,
         format(new Date(o.lastUpdated), "dd/MM/yyyy")
       ]
     })
@@ -1211,18 +1217,18 @@ export function PaymentManagement() {
                     <TableRow>
                       <TableHead>Shopkeeper</TableHead>
                       <TableHead className="text-right">Total Orders</TableHead>
-                      <TableHead className="text-right">Round Off</TableHead>
                       <TableHead className="text-right">Grand Total</TableHead>
                       <TableHead className="text-right">Total Paid</TableHead>
-                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead className="text-right">Outstanding</TableHead>
                       <TableHead>Last Updated</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredOutstanding.map((item) => {
-                      const grandTotal = item.totalOrders + item.roundOff
+                      const grandTotal = Math.round(item.totalOrders + item.roundOff)
+                      const outstanding = grandTotal - item.totalPaid
                       return (
-                      <TableRow key={item.shopkeeperId} className={item.balance > 0 ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-green-50/50 dark:bg-green-900/10'}>
+                      <TableRow key={item.shopkeeperId} className={outstanding > 0 ? 'bg-red-50/50 dark:bg-red-900/10' : outstanding < 0 ? 'bg-green-50/50 dark:bg-green-900/10' : ''}>
                         <TableCell>
                           <div>
                             <p className="font-medium">{item.shopkeeper.shopName}</p>
@@ -1236,21 +1242,18 @@ export function PaymentManagement() {
                         <TableCell className="text-right">
                           ₹{item.totalOrders.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
-                        <TableCell className="text-right text-blue-600">
-                          ₹{item.roundOff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-orange-600">
+                        <TableCell className="text-right font-bold text-blue-600">
                           ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell className="text-right text-green-600">
                           ₹{item.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className={`font-bold ${item.balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                            {item.balance > 0 ? '-' : '+'}₹{Math.abs(item.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className={`font-bold ${outstanding > 0 ? 'text-red-600 dark:text-red-400' : outstanding < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600'}`}>
+                            {outstanding > 0 ? '-' : outstanding < 0 ? '+' : ''}₹{Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
-                          <p className={`text-xs ${item.balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                            {item.balance > 0 ? 'Amount Due' : 'Advance'}
+                          <p className={`text-xs ${outstanding > 0 ? 'text-red-500' : outstanding < 0 ? 'text-green-500' : 'text-gray-500'}`}>
+                            {outstanding > 0 ? 'Amount Due' : outstanding < 0 ? 'Advance' : 'Settled'}
                           </p>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -1261,7 +1264,7 @@ export function PaymentManagement() {
                     })}
                     {filteredOutstanding.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           <div className="flex flex-col items-center gap-2">
                             <CheckCircle className="h-8 w-8 text-green-500" />
                             <p>No outstanding balances</p>
