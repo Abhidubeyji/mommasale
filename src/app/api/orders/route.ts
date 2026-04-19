@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session) {
+    if (!session || session.user.role === "VIEWER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -203,7 +203,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, status, shopkeeperId, items, notes } = body
+    const { id, status, shopkeeperId, items, notes, roundOff } = body
 
     if (!id) {
       return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
@@ -231,11 +231,9 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: "You can only edit your own orders" }, { status: 401 })
         }
       }
-      // Admin and Viewer can edit any order in any status
-      // Sales users can only edit PENDING orders (before admin approval)
-
-      // Store old total amount for outstanding balance update
-      const oldTotalAmount = existingOrder.totalAmount
+      if (session.user.role === "VIEWER") {
+        return NextResponse.json({ error: "Viewers cannot edit orders" }, { status: 401 })
+      }
 
       // Calculate new totals
       let subtotal = 0
@@ -302,77 +300,6 @@ export async function PUT(request: NextRequest) {
           }
         }
       })
-
-      // If order is DISPATCHED, update outstanding balance with the difference
-      if (existingOrder.status === "DISPATCHED") {
-        const amountDifference = totalAmount - oldTotalAmount
-        const shopkeeperChanged = shopkeeperId && shopkeeperId !== existingOrder.shopkeeperId
-        
-        if (shopkeeperChanged) {
-          // If shopkeeper changed, remove amount from old shopkeeper and add to new
-          const oldOutstanding = await db.outstanding.findUnique({
-            where: { shopkeeperId: existingOrder.shopkeeperId }
-          })
-
-          if (oldOutstanding) {
-            await db.outstanding.update({
-              where: { shopkeeperId: existingOrder.shopkeeperId },
-              data: {
-                totalOrders: { decrement: oldTotalAmount },
-                balance: { decrement: oldTotalAmount },
-                lastUpdated: new Date()
-              }
-            })
-          }
-
-          // Add to new shopkeeper
-          const newOutstanding = await db.outstanding.findUnique({
-            where: { shopkeeperId: shopkeeperId as string }
-          })
-
-          if (newOutstanding) {
-            await db.outstanding.update({
-              where: { shopkeeperId: shopkeeperId as string },
-              data: {
-                totalOrders: { increment: totalAmount },
-                balance: { increment: totalAmount },
-                lastUpdated: new Date()
-              }
-            })
-          } else {
-            await db.outstanding.create({
-              data: {
-                id: randomUUID(),
-                shopkeeperId: shopkeeperId as string,
-                totalOrders: totalAmount,
-                balance: totalAmount
-              }
-            })
-          }
-
-          // Update any payments linked to this order to the new shopkeeper
-          await db.payment.updateMany({
-            where: { orderId: id },
-            data: { shopkeeperId: shopkeeperId as string }
-          })
-        } else if (amountDifference !== 0) {
-          // Same shopkeeper, just update the difference
-          const outstanding = await db.outstanding.findUnique({
-            where: { shopkeeperId: order.shopkeeperId }
-          })
-
-          if (outstanding) {
-            await db.outstanding.update({
-              where: { shopkeeperId: order.shopkeeperId },
-              data: {
-                totalOrders: { increment: amountDifference },
-                balance: { increment: amountDifference },
-                lastUpdated: new Date()
-              }
-            })
-          }
-        }
-      }
 
       return NextResponse.json(order)
     }
@@ -464,6 +391,31 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(order)
     }
 
+    // Round Off update - Only Admin and Viewer can update roundOff
+    if (roundOff !== undefined) {
+      if (session.user.role !== "ADMIN" && session.user.role !== "VIEWER") {
+        return NextResponse.json({ error: "Only admin or viewer can update round off" }, { status: 401 })
+      }
+
+      const order = await db.order.update({
+        where: { id },
+        data: { roundOff: roundOff },
+        include: {
+          shopkeeper: true,
+          user: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              product: {
+                include: { category: true }
+              }
+            }
+          }
+        }
+      })
+
+      return NextResponse.json(order)
+    }
+
     return NextResponse.json({ error: "No update data provided" }, { status: 400 })
   } catch (error) {
     console.error("Update order error:", error)
@@ -493,39 +445,24 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Admin and Viewer can delete ANY order in ANY status
-    if (session.user.role === "ADMIN" || session.user.role === "VIEWER") {
+    // Admin can delete ANY order in ANY status
+    if (session.user.role === "ADMIN") {
       // If deleting a DISPATCHED order, we need to revert the outstanding balance
       if (order.status === "DISPATCHED") {
-        // Get payments linked to this order
-        const linkedPayments = await db.payment.findMany({
-          where: { orderId: id }
-        })
-        const totalPaymentsAmount = linkedPayments.reduce((sum, p) => sum + p.amount, 0)
-
         const outstanding = await db.outstanding.findUnique({
           where: { shopkeeperId: order.shopkeeperId }
         })
         
         if (outstanding) {
-          // Decrement totalOrders by order amount
-          // Also decrement totalPaid by the payments already made for this order
           await db.outstanding.update({
             where: { shopkeeperId: order.shopkeeperId },
             data: {
               totalOrders: { decrement: order.totalAmount },
-              totalPaid: { decrement: totalPaymentsAmount },
-              balance: { decrement: order.totalAmount - totalPaymentsAmount },
+              balance: { decrement: order.totalAmount },
               lastUpdated: new Date()
             }
           })
         }
-
-        // Unlink payments from this order (set orderId to null, keep payments as records)
-        await db.payment.updateMany({
-          where: { orderId: id },
-          data: { orderId: null, isAdvance: true } // Mark as advance since no longer linked to specific order
-        })
       }
       
       await db.order.delete({
@@ -553,7 +490,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Order deleted" })
     }
 
-    // Other roles cannot delete
+    // Viewers cannot delete
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   } catch (error) {
     console.error("Delete order error:", error)
