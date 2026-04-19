@@ -361,12 +361,12 @@ export function PaymentManagement() {
 
     const headers = [
       "Date", "Time", "Type", "Shop Name", "Owner", "Mobile", 
-      "Order ID", "Advance", "Total Amount", "Round Off", "Outstanding", "Method", "Reference", "Notes", "Recorded By"
+      "Order ID", "Advance", "Total Amount", "Grand Total", "Outstanding", "Method", "Reference", "Notes", "Recorded By"
     ]
     
     const rows = filteredPayments.map(p => {
-      const shopkeeperOutstanding = shopkeepers.find(sk => sk.id === p.shopkeeper?.id)?.outstanding
-      const roundOff = p.order?.totalAmount ? Math.round(p.order.totalAmount) - p.order.totalAmount : 0
+      const grandTotal = p.order?.totalAmount ? Math.round(p.order.totalAmount) : 0
+      const outstanding = p.order?.totalAmount ? grandTotal - p.amount : 0
       return [
         format(new Date(p.createdAt), "dd/MM/yyyy"),
         format(new Date(p.createdAt), "HH:mm"),
@@ -377,8 +377,8 @@ export function PaymentManagement() {
         p.order?.orderId || "",
         p.amount,
         p.order?.totalAmount || "",
-        roundOff,
-        shopkeeperOutstanding ? Math.abs(shopkeeperOutstanding.balance) : 0,
+        grandTotal,
+        outstanding,
         p.method,
         p.transactionRef || "",
         p.notes || "",
@@ -984,7 +984,7 @@ export function PaymentManagement() {
                         <TableHead className="whitespace-nowrap">Order ID</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Advance</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Total Amount</TableHead>
-                        <TableHead className="text-right whitespace-nowrap">Round Off</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Grand Total</TableHead>
                         <TableHead className="text-right whitespace-nowrap">Outstanding</TableHead>
                         <TableHead className="whitespace-nowrap">Method</TableHead>
                         <TableHead className="whitespace-nowrap">Reference</TableHead>
@@ -1100,25 +1100,26 @@ export function PaymentManagement() {
                           </TableCell>
                           <TableCell className="text-right">
                             {payment.order && payment.order.totalAmount ? (
-                              (() => {
-                                const roundOff = Math.round(payment.order.totalAmount) - payment.order.totalAmount
-                                return (
-                                  <p className={`font-medium ${roundOff >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {roundOff >= 0 ? '+' : ''}₹{roundOff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
-                                )
-                              })()
+                              <p className="font-medium text-blue-600 dark:text-blue-400">
+                                ₹{Math.round(payment.order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            {payment.shopkeeper && shopkeeperOutstanding ? (
-                              <p className={`font-medium ${shopkeeperOutstanding.balance > 0 ? 'text-red-600 dark:text-red-400' : shopkeeperOutstanding.balance < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
-                                ₹{Math.abs(shopkeeperOutstanding.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </p>
+                            {payment.order && payment.order.totalAmount ? (
+                              (() => {
+                                const grandTotal = Math.round(payment.order.totalAmount)
+                                const outstanding = grandTotal - payment.amount
+                                return (
+                                  <p className={`font-medium ${outstanding > 0 ? 'text-red-600 dark:text-red-400' : outstanding < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                                    ₹{Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                )
+                              })()
                             ) : (
-                              <span className="text-muted-foreground">₹0.00</span>
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell>
