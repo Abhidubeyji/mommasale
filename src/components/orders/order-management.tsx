@@ -36,7 +36,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Plus, ShoppingCart, Clock, CheckCircle, XCircle, Truck, 
-  Search, Trash2, Eye, Package, Calculator, User, Edit, Save, Loader2, Download
+  Search, Trash2, Eye, Package, Calculator, User, Edit, Save, Loader2, Download, MapPin
 } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -1841,6 +1841,24 @@ export function OrderManagement() {
                   {selectedOrder.notes && (
                     <div className="text-sm text-muted-foreground">
                       <strong>Notes:</strong> {selectedOrder.notes}
+                    </div>
+                  )}
+                  
+                  {/* Location only visible to ADMIN and VIEWER, hidden from SALES */}
+                  {selectedOrder.latitude && selectedOrder.longitude && session?.user?.role !== "SALES" && (
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-red-500" />
+                      <span>
+                        <strong>Location:</strong>{" "}
+                        <a 
+                          href={`https://www.google.com/maps?q=${selectedOrder.latitude},${selectedOrder.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:underline"
+                        >
+                          {selectedOrder.latitude.toFixed(6)}, {selectedOrder.longitude.toFixed(6)}
+                        </a>
+                      </span>
                     </div>
                   )}
                 </div>
