@@ -472,6 +472,7 @@ export function OrderManagement() {
     try {
       const res = await fetch("/api/orders", {
         method: "PUT",
+        credentials: 'include',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId, status: newStatus })
       })
@@ -493,7 +494,10 @@ export function OrderManagement() {
     if (!confirm("Are you sure you want to delete this order?")) return
     
     try {
-      const res = await fetch(`/api/orders?id=${orderId}`, { method: "DELETE" })
+      const res = await fetch(`/api/orders?id=${orderId}`, { 
+        method: "DELETE",
+        credentials: 'include'
+      })
       if (res.ok) {
         toast.success("Order deleted successfully")
         fetchData()
