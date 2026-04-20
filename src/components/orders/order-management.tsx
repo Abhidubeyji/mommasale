@@ -74,6 +74,8 @@ interface Order {
   createdAt: string
   approvedAt: string | null
   dispatchedAt: string | null
+  latitude?: number | null
+  longitude?: number | null
   shopkeeper: {
     id: string
     shopName: string
@@ -295,6 +297,34 @@ export function OrderManagement() {
     setOrderItems(orderItems.filter((_, i) => i !== index))
   }
 
+  // Helper function to get current location silently
+  const getCurrentLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null)
+        return
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          })
+        },
+        () => {
+          // Silently fail - location is optional
+          resolve(null)
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 60000
+        }
+      )
+    })
+  }
+
   const handleCreateOrder = async () => {
     if (!selectedShopkeeper) {
       toast.error("Please select a shopkeeper")
@@ -307,6 +337,9 @@ export function OrderManagement() {
 
     setCreating(true)
     try {
+      // Get location silently (optional, won't block order creation)
+      const location = await getCurrentLocation()
+
       const res = await fetch("/api/orders", {
         method: "POST",
         credentials: 'include',
@@ -321,7 +354,9 @@ export function OrderManagement() {
             adminDiscount: item.adminDiscount,
             extraDiscount: item.extraDiscount
           })),
-          notes: orderNotes
+          notes: orderNotes,
+          latitude: location?.latitude,
+          longitude: location?.longitude
         })
       })
 
