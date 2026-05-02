@@ -622,8 +622,8 @@ export function OrderManagement() {
             item.product.name,
             item.product.category?.name || "No Category",
             item.product.packingDetail,
-            item.quantity,
             item.unitPrice,
+            item.quantity,
             item.productPrice,
             item.adminDiscount,
             item.extraDiscount,
@@ -640,7 +640,7 @@ export function OrderManagement() {
 
     const headers = [
       "Order ID", "Shop Name", "Owner", "Mobile", "Created By",
-      "Product", "Category", "Packing", "Qty", "Unit Price", "Product Price",
+      "Product", "Category", "Packing", "Unit Price", "Qty", "Product Price",
       "Admin Disc %", "Extra Disc %", "Item Amount", "Subtotal", "Total Discount", "Order Total",
       "Status", "Date"
     ]
@@ -855,11 +855,11 @@ export function OrderManagement() {
                           <TableHead className="whitespace-nowrap">Product</TableHead>
                           <TableHead className="whitespace-nowrap">Category</TableHead>
                           <TableHead className="whitespace-nowrap">Packing</TableHead>
-                          <TableHead className="text-center whitespace-nowrap">Qty</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Product Price</TableHead>
-                          <TableHead className="text-right whitespace-nowrap">Selling Price</TableHead>
+                          <TableHead className="text-center whitespace-nowrap">Qty</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Discount %</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Extra Discount %</TableHead>
+                          <TableHead className="text-right whitespace-nowrap">Selling Price</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Round Off</TableHead>
                           <TableHead className="text-right whitespace-nowrap">Grand Total</TableHead>
@@ -898,11 +898,11 @@ export function OrderManagement() {
                                 <TableCell className="whitespace-nowrap">{row.item.product.name}</TableCell>
                                 <TableCell className="whitespace-nowrap">{row.item.product.category?.name || "No Category"}</TableCell>
                                 <TableCell className="whitespace-nowrap">{row.item.product.packingDetail}</TableCell>
-                                <TableCell className="text-center font-medium whitespace-nowrap">{row.item.quantity}</TableCell>
                                 <TableCell className="text-right whitespace-nowrap">₹{row.item.productPrice.toFixed(2)}</TableCell>
-                                <TableCell className="text-right whitespace-nowrap">₹{(row.item.finalPrice / row.item.quantity).toFixed(2)}</TableCell>
+                                <TableCell className="text-center font-medium whitespace-nowrap">{row.item.quantity}</TableCell>
                                 <TableCell className="text-right whitespace-nowrap">{row.item.adminDiscount}%</TableCell>
                                 <TableCell className="text-right whitespace-nowrap">{row.item.extraDiscount}%</TableCell>
+                                <TableCell className="text-right whitespace-nowrap">₹{(row.item.finalPrice / row.item.quantity).toFixed(2)}</TableCell>
                                 <TableCell className="text-right font-medium whitespace-nowrap">₹{row.item.finalPrice.toFixed(2)}</TableCell>
                               </>
                             ) : (

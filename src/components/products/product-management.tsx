@@ -45,9 +45,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Plus, Pencil, Trash2, Package, Search, Upload, Download, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
-import { Checkbox } from "@/components/ui/checkbox"
-import * as XLSX from "xlsx"
-import { format } from "date-fns"
 
 interface Product {
   id: string
@@ -107,11 +104,6 @@ export function ProductManagement() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importResultDialogOpen, setImportResultDialogOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Bulk delete states
-  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
-  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
-  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   // Auto-calculated selling price
   const calculatedPrice = formData.unitPrice && formData.packingQty
@@ -282,88 +274,6 @@ export function ProductManagement() {
     }
   }
 
-  // Bulk delete handlers
-  const toggleSelectAll = () => {
-    if (selectedProducts.size === filteredProducts.length) {
-      setSelectedProducts(new Set())
-    } else {
-      setSelectedProducts(new Set(filteredProducts.map(p => p.id)))
-    }
-  }
-
-  const toggleProductSelection = (productId: string) => {
-    const newSelected = new Set(selectedProducts)
-    if (newSelected.has(productId)) {
-      newSelected.delete(productId)
-    } else {
-      newSelected.add(productId)
-    }
-    setSelectedProducts(newSelected)
-  }
-
-  const handleBulkDelete = async () => {
-    if (selectedProducts.size === 0) return
-
-    setBulkDeleting(true)
-    try {
-      const res = await fetch(`/api/products?ids=${Array.from(selectedProducts).join(",")}`, {
-        method: "DELETE"
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(data.message)
-        setSelectedProducts(new Set())
-        setBulkDeleteDialogOpen(false)
-        fetchProducts()
-      } else {
-        const data = await res.json()
-        toast.error(data.error || "Failed to delete products")
-      }
-    } catch (error) {
-      toast.error("An error occurred")
-    } finally {
-      setBulkDeleting(false)
-    }
-  }
-
-  // Export products to Excel
-  const exportProductsToExcel = () => {
-    if (filteredProducts.length === 0) {
-      toast.error("No products to export")
-      return
-    }
-
-    const rows = filteredProducts.map(product => [
-      product.name,
-      product.category?.name || "No Category",
-      product.packingDetail,
-      product.packingQty,
-      product.unitPrice,
-      product.productPrice,
-      product.discountPercent,
-      product.extraDiscountPercent,
-      product.description || "",
-      product.isActive ? "Active" : "Inactive"
-    ])
-
-    const headers = [
-      "Product Name", "Category", "Packing", "Packing Qty", "Unit Price",
-      "Selling Price", "Discount %", "Extra Discount %", "Description", "Status"
-    ]
-
-    const worksheetData = [headers, ...rows]
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
-    worksheet['!cols'] = headers.map((_, i) => ({
-      wch: Math.max(...worksheetData.map(row => String(row[i] || "").length)) + 2
-    }))
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, worksheet, "Products")
-    XLSX.writeFile(wb, `products_${format(new Date(), "yyyy-MM-dd")}.xlsx`)
-    toast.success("Products exported to Excel")
-  }
-
   // Import handlers
   const handleDownloadTemplate = async () => {
     try {
@@ -462,24 +372,6 @@ export function ProductManagement() {
 
         {session?.user?.role === "ADMIN" && (
           <div className="flex flex-wrap gap-2">
-            {/* Export Button */}
-            <Button variant="outline" onClick={exportProductsToExcel} className="gap-2">
-              <Download className="h-4 w-4" />
-              Export Excel
-            </Button>
-
-            {/* Bulk Delete Button */}
-            {selectedProducts.size > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => setBulkDeleteDialogOpen(true)}
-                className="text-red-600 border-red-200 hover:bg-red-50"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Selected ({selectedProducts.size})
-              </Button>
-            )}
-
             {/* Import Button */}
             <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
               <DialogTrigger asChild>
@@ -730,20 +622,11 @@ export function ProductManagement() {
             {filteredProducts.map((product) => (
               <div key={product.id} className={`border rounded-lg p-3 bg-white dark:bg-gray-800 space-y-2 ${!product.isActive ? "opacity-50" : ""}`}>
                 <div className="flex justify-between items-start gap-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {session?.user?.role === "ADMIN" && (
-                      <Checkbox
-                        checked={selectedProducts.has(product.id)}
-                        onCheckedChange={() => toggleProductSelection(product.id)}
-                        aria-label="Select product"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{product.name}</p>
-                      <Badge variant="outline" className={!product.category ? "text-gray-400" : "mt-1"}>
-                        {product.category?.name || "No Category"}
-                      </Badge>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{product.name}</p>
+                    <Badge variant="outline" className={!product.category ? "text-gray-400" : "mt-1"}>
+                      {product.category?.name || "No Category"}
+                    </Badge>
                   </div>
                   <Badge className={product.isActive ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"}>
                     {product.isActive ? "Active" : "Inactive"}
@@ -758,6 +641,10 @@ export function ProductManagement() {
                   <div>
                     <p className="text-xs text-muted-foreground">Packing</p>
                     <p className="font-medium">{product.packingDetail}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Product Price</p>
+                    <p className="font-medium">₹{product.unitPrice.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Selling Price</p>
@@ -820,15 +707,6 @@ export function ProductManagement() {
               <Table className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
-                    {session?.user?.role === "ADMIN" && (
-                      <TableHead className="w-12">
-                        <Checkbox
-                          checked={selectedProducts.size === filteredProducts.length && filteredProducts.length > 0}
-                          onCheckedChange={toggleSelectAll}
-                          aria-label="Select all"
-                        />
-                      </TableHead>
-                    )}
                     <TableHead className="whitespace-nowrap">Product</TableHead>
                     <TableHead className="whitespace-nowrap">Category</TableHead>
                     <TableHead className="whitespace-nowrap hidden md:table-cell">Packing</TableHead>
@@ -845,15 +723,6 @@ export function ProductManagement() {
                 <TableBody>
                   {filteredProducts.map((product) => (
                     <TableRow key={product.id} className={!product.isActive ? "opacity-50" : ""}>
-                      {session?.user?.role === "ADMIN" && (
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedProducts.has(product.id)}
-                            onCheckedChange={() => toggleProductSelection(product.id)}
-                            aria-label="Select product"
-                          />
-                        </TableCell>
-                      )}
                       <TableCell>
                         <div>
                           <div className="font-medium">{product.name}</div>
@@ -995,30 +864,6 @@ export function ProductManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Selected Products</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete {selectedProducts.size} selected product(s)?
-              Products used in orders will be deactivated instead of deleted.
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDelete}
-              disabled={bulkDeleting}
-              className="bg-red-500 hover:bg-red-600"
-            >
-              {bulkDeleting ? "Deleting..." : "Delete Selected"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Loading overlay for import */}
       {importing && (

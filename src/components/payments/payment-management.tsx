@@ -89,6 +89,7 @@ interface Order {
   id: string
   orderId: string
   totalAmount: number
+  createdAt: string
   shopkeeper: {
     id: string
     shopName: string
@@ -133,6 +134,14 @@ export function PaymentManagement() {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [outstandingSearch, setOutstandingSearch] = useState("")
+  
+  // Order-wise outstanding dialog
+  const [orderWiseDialogOpen, setOrderWiseDialogOpen] = useState(false)
+  const [selectedShopkeeperForOrders, setSelectedShopkeeperForOrders] = useState<Shopkeeper | null>(null)
+  const [quickPayOrderId, setQuickPayOrderId] = useState("")
+  const [quickPayAmount, setQuickPayAmount] = useState("")
+  const [quickPayDialogOpen, setQuickPayDialogOpen] = useState(false)
+  const [quickPayMethod, setQuickPayMethod] = useState<"CASH" | "UPI" | "ONLINE">("CASH")
   
   // Date filter states
   const [dateFilter, setDateFilter] = useState<DateFilterType>("all")
@@ -236,6 +245,82 @@ export function PaymentManagement() {
       }
     } catch (error) {
       toast.error("An error occurred")
+    }
+  }
+
+  // Open order-wise outstanding dialog
+  const openOrderWiseDialog = (shopkeeper: Shopkeeper) => {
+    setSelectedShopkeeperForOrders(shopkeeper)
+    setOrderWiseDialogOpen(true)
+  }
+
+  // Get orders for selected shopkeeper with payment status
+  const getShopkeeperOrders = (shopkeeperId: string) => {
+    return orders
+      .filter(o => o.shopkeeper.id === shopkeeperId)
+      .map(order => {
+        const orderPayments = payments
+          .filter(p => p.order?.id === order.id)
+          .reduce((sum, p) => sum + p.amount, 0)
+        const grandTotal = Math.round(order.totalAmount)
+        const outstanding = grandTotal - orderPayments
+        return {
+          ...order,
+          grandTotal,
+          paid: orderPayments,
+          outstanding
+        }
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+
+  // Open quick pay dialog
+  const openQuickPay = (orderId: string, amount: number) => {
+    setQuickPayOrderId(orderId)
+    setQuickPayAmount(amount.toString())
+    setQuickPayMethod("CASH")
+    setQuickPayDialogOpen(true)
+  }
+
+  // Handle quick payment
+  const handleQuickPay = async () => {
+    if (!quickPayAmount || parseFloat(quickPayAmount) <= 0) {
+      toast.error("Please enter a valid amount")
+      return
+    }
+
+    const order = orders.find(o => o.id === quickPayOrderId)
+    if (!order) return
+
+    setSaving(true)
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopkeeperId: order.shopkeeper.id,
+          orderId: quickPayOrderId,
+          amount: parseFloat(quickPayAmount),
+          method: quickPayMethod,
+          isAdvance: false
+        })
+      })
+
+      if (res.ok) {
+        toast.success("Payment recorded successfully")
+        fetchData()
+        setQuickPayDialogOpen(false)
+        setQuickPayAmount("")
+        setQuickPayOrderId("")
+      } else {
+        const data = await res.json()
+        toast.error(data.error || "Failed to record payment")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -1221,12 +1306,14 @@ export function PaymentManagement() {
                       <TableHead className="text-right">Total Paid</TableHead>
                       <TableHead className="text-right">Outstanding</TableHead>
                       <TableHead>Last Updated</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredOutstanding.map((item) => {
                       const grandTotal = Math.round(item.totalOrders + item.roundOff)
                       const outstanding = grandTotal - item.totalPaid
+                      const sk = shopkeepers.find(s => s.id === item.shopkeeperId)
                       return (
                       <TableRow key={item.shopkeeperId} className={outstanding > 0 ? 'bg-red-50/50 dark:bg-red-900/10' : outstanding < 0 ? 'bg-green-50/50 dark:bg-green-900/10' : ''}>
                         <TableCell>
@@ -1259,12 +1346,23 @@ export function PaymentManagement() {
                         <TableCell className="text-muted-foreground">
                           {format(new Date(item.lastUpdated), "dd MMM yyyy")}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => sk && openOrderWiseDialog(sk)}
+                            className="h-8 text-orange-600 hover:bg-orange-100"
+                          >
+                            <Package className="h-4 w-4 mr-1" />
+                            Orders
+                          </Button>
+                        </TableCell>
                       </TableRow>
                       )
                     })}
                     {filteredOutstanding.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                           <div className="flex flex-col items-center gap-2">
                             <CheckCircle className="h-8 w-8 text-green-500" />
                             <p>No outstanding balances</p>
@@ -1280,6 +1378,149 @@ export function PaymentManagement() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Order-wise Outstanding Dialog */}
+      <Dialog open={orderWiseDialogOpen} onOpenChange={setOrderWiseDialogOpen}>
+        <DialogContent className="sm:max-w-4xl w-[95vw] max-w-[95vw] sm:w-auto max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="p-4 sm:p-6 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-orange-500" />
+              Order-wise Outstanding
+            </DialogTitle>
+            <DialogDescription>
+              {selectedShopkeeperForOrders?.shopName} - {selectedShopkeeperForOrders?.ownerName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto px-4 sm:px-6 py-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead className="text-right">Grand Total</TableHead>
+                  <TableHead className="text-right">Paid</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
+                  <TableHead>Date</TableHead>
+                  {session?.user?.role !== "VIEWER" && (
+                    <TableHead className="text-right">Action</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedShopkeeperForOrders && getShopkeeperOrders(selectedShopkeeperForOrders.id).map((order) => (
+                  <TableRow key={order.id} className={order.outstanding > 0 ? 'bg-red-50/50 dark:bg-red-900/10' : order.outstanding < 0 ? 'bg-green-50/50 dark:bg-green-900/10' : ''}>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono font-semibold text-orange-600 border-orange-300">
+                        {order.orderId}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-blue-600">
+                      ₹{order.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right text-green-600">
+                      ₹{order.paid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={`font-bold ${order.outstanding > 0 ? 'text-red-600' : order.outstanding < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                        {order.outstanding > 0 ? '-' : order.outstanding < 0 ? '+' : ''}₹{Math.abs(order.outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(order.createdAt), "dd MMM yyyy")}
+                    </TableCell>
+                    {session?.user?.role !== "VIEWER" && (
+                      <TableCell className="text-right">
+                        {order.outstanding > 0 ? (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setOrderWiseDialogOpen(false)
+                              openQuickPay(order.id, order.outstanding)
+                            }}
+                            className="bg-green-500 hover:bg-green-600 h-8"
+                          >
+                            <CreditCard className="h-4 w-4 mr-1" />
+                            Pay Now
+                          </Button>
+                        ) : order.outstanding === 0 ? (
+                          <Badge className="bg-green-100 text-green-800">Paid</Badge>
+                        ) : (
+                          <Badge className="bg-blue-100 text-blue-800">Advance</Badge>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+                {selectedShopkeeperForOrders && getShopkeeperOrders(selectedShopkeeperForOrders.id).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={session?.user?.role !== "VIEWER" ? 6 : 5} className="text-center text-muted-foreground py-8">
+                      No orders found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter className="p-4 sm:p-6 border-t shrink-0">
+            <Button variant="outline" onClick={() => setOrderWiseDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Pay Dialog */}
+      <Dialog open={quickPayDialogOpen} onOpenChange={setQuickPayDialogOpen}>
+        <DialogContent className="sm:max-w-md w-[95vw] max-w-[95vw] sm:w-auto p-0">
+          <DialogHeader className="p-4 sm:p-6 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-green-500" />
+              Quick Payment
+            </DialogTitle>
+            <DialogDescription>
+              Record payment for order
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-4 sm:px-6 py-4 space-y-4">
+            <div className="grid gap-2">
+              <Label>Amount (₹) *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={quickPayAmount}
+                onChange={(e) => setQuickPayAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="h-11"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Payment Method *</Label>
+              <Select value={quickPayMethod} onValueChange={(value: "CASH" | "UPI" | "ONLINE") => setQuickPayMethod(value)}>
+                <SelectTrigger className="h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">💵 Cash</SelectItem>
+                  <SelectItem value="UPI">📱 UPI</SelectItem>
+                  <SelectItem value="ONLINE">💳 Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="p-4 sm:p-6 border-t gap-2">
+            <Button variant="outline" onClick={() => setQuickPayDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleQuickPay} 
+              disabled={saving || !quickPayAmount || parseFloat(quickPayAmount) <= 0}
+              className="bg-green-500 hover:bg-green-600"
+            >
+              {saving ? "Recording..." : "Record Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
