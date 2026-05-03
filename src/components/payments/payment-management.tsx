@@ -1202,7 +1202,11 @@ export function PaymentManagement() {
                             {payment.order && payment.order.totalAmount ? (
                               (() => {
                                 const grandTotal = Math.round(payment.order.totalAmount)
-                                const outstanding = grandTotal - payment.amount
+                                // Calculate total payments for this order (all payments linked to this order)
+                                const totalPaidForOrder = payments
+                                  .filter(p => p.order?.id === payment.order?.id)
+                                  .reduce((sum, p) => sum + p.amount, 0)
+                                const outstanding = grandTotal - totalPaidForOrder
                                 return (
                                   <p className={`font-medium ${outstanding > 0 ? 'text-red-600 dark:text-red-400' : outstanding < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
                                     ₹{Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

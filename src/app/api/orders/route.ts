@@ -222,12 +222,7 @@ export async function PUT(request: NextRequest) {
 
     // If updating items (full edit)
     if (items && Array.isArray(items)) {
-      // Cannot edit DISPATCHED orders - only delete is allowed
-      if (existingOrder.status === "DISPATCHED") {
-        return NextResponse.json({ error: "Cannot edit dispatched orders. Only delete is allowed." }, { status: 400 })
-      }
-      
-      // Admin can edit PENDING, APPROVED, REJECTED orders
+      // Admin can edit ANY order including DISPATCHED
       // Sales users can only edit PENDING orders (before admin approval)
       if (session.user.role === "SALES") {
         if (existingOrder.status !== "PENDING" && existingOrder.status !== "REJECTED") {
@@ -282,6 +277,31 @@ export async function PUT(request: NextRequest) {
         where: { orderId: id }
       })
 
+      // If order was DISPATCHED, we need to revert the outstanding balance
+      // because the order is being reset to PENDING for re-approval
+      if (existingOrder.status === "DISPATCHED") {
+        const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
+        const grandTotal = Math.round(existingOrder.totalAmount)
+        
+        const outstanding = await db.outstanding.findUnique({
+          where: { shopkeeperId: existingOrder.shopkeeperId }
+        })
+        
+        if (outstanding) {
+          await db.outstanding.update({
+            where: { shopkeeperId: existingOrder.shopkeeperId },
+            data: {
+              totalOrders: { decrement: existingOrder.totalAmount },
+              roundOff: { decrement: orderRoundOff },
+              balance: { decrement: grandTotal },
+              lastUpdated: new Date()
+            }
+          })
+        }
+      }
+
+      // When items are updated, reset status to PENDING for re-approval
+      // This applies to all orders including DISPATCHED
       const order = await db.order.update({
         where: { id },
         data: {
@@ -291,6 +311,9 @@ export async function PUT(request: NextRequest) {
           adminDiscount: adminDiscountTotal,
           extraDiscount: extraDiscountTotal,
           totalAmount,
+          status: "PENDING",
+          approvedAt: null,
+          dispatchedAt: null,
           items: {
             create: newOrderItems
           }
@@ -322,6 +345,15 @@ export async function PUT(request: NextRequest) {
         if (existingOrder.status !== "PENDING") {
           return NextResponse.json({ error: "Can only approve/reject pending orders" }, { status: 400 })
         }
+        // Validate ALL items have qty > 0 for approval
+        if (status === "APPROVED") {
+          console.log("APPROVE validation - items:", existingOrder.items.map(i => ({ qty: i.quantity })))
+          const hasZeroQtyItem = existingOrder.items.some(item => item.quantity <= 0)
+          console.log("hasZeroQtyItem:", hasZeroQtyItem)
+          if (hasZeroQtyItem) {
+            return NextResponse.json({ error: "Cannot approve order. All items must have quantity greater than 0" }, { status: 400 })
+          }
+        }
       }
 
       if (status === "DISPATCHED") {
@@ -331,6 +363,43 @@ export async function PUT(request: NextRequest) {
         }
         if (existingOrder.status !== "APPROVED") {
           return NextResponse.json({ error: "Can only dispatch approved orders" }, { status: 400 })
+        }
+        // Validate ALL items have qty > 0 for dispatch
+        console.log("DISPATCH validation - items:", existingOrder.items.map(i => ({ qty: i.quantity })))
+        const hasZeroQtyItem = existingOrder.items.some(item => item.quantity <= 0)
+        console.log("hasZeroQtyItem:", hasZeroQtyItem)
+        if (hasZeroQtyItem) {
+          return NextResponse.json({ error: "Cannot dispatch order. All items must have quantity greater than 0" }, { status: 400 })
+        }
+      }
+
+      // Handle setting status back to PENDING (from APPROVED or DISPATCHED)
+      if (status === "PENDING") {
+        // Admin and Viewer can set to pending
+        if (session.user.role !== "ADMIN" && session.user.role !== "VIEWER") {
+          return NextResponse.json({ error: "Only admin or viewer can change order status" }, { status: 401 })
+        }
+        
+        // If order was DISPATCHED, revert the outstanding balance
+        if (existingOrder.status === "DISPATCHED") {
+          const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
+          const grandTotal = Math.round(existingOrder.totalAmount)
+          
+          const outstanding = await db.outstanding.findUnique({
+            where: { shopkeeperId: existingOrder.shopkeeperId }
+          })
+          
+          if (outstanding) {
+            await db.outstanding.update({
+              where: { shopkeeperId: existingOrder.shopkeeperId },
+              data: {
+                totalOrders: { decrement: existingOrder.totalAmount },
+                roundOff: { decrement: orderRoundOff },
+                balance: { decrement: grandTotal },
+                lastUpdated: new Date()
+              }
+            })
+          }
         }
       }
 
@@ -383,6 +452,10 @@ export async function PUT(request: NextRequest) {
             orderId: existingOrder.id
           }
         })
+      } else if (status === "PENDING") {
+        // Reset approval and dispatch timestamps when setting back to PENDING
+        updateData.approvedAt = null
+        updateData.dispatchedAt = null
       }
 
       const order = await db.order.update({

@@ -443,7 +443,12 @@ export function OrderManagement() {
       })
 
       if (res.ok) {
-        toast.success("Order updated successfully")
+        // Show message based on previous status
+        if (selectedOrder.status === "DISPATCHED" || selectedOrder.status === "APPROVED") {
+          toast.success("Order updated and status reset to PENDING for re-approval")
+        } else {
+          toast.success("Order updated successfully")
+        }
         setEditDialogOpen(false)
         fetchData()
       } else {
@@ -513,7 +518,12 @@ export function OrderManagement() {
       })
 
       if (res.ok) {
-        toast.success(`Order ${newStatus.toLowerCase()} successfully`)
+        // Show appropriate message based on status
+        if (newStatus === "PENDING") {
+          toast.success("Order pending")
+        } else {
+          toast.success(`Order ${newStatus.toLowerCase()} successfully`)
+        }
         fetchData()
         setDetailsDialogOpen(false)
       } else {
@@ -936,20 +946,18 @@ export function OrderManagement() {
                                 </TableCell>
                                 <TableCell rowSpan={row.rowSpan} className="text-right whitespace-nowrap">
                                   <div className="flex justify-end gap-1 sm:gap-2">
-                                    {/* Admin can edit ANY order EXCEPT DISPATCHED, can delete ANY order */}
+                                    {/* Admin can edit ANY order including DISPATCHED, can delete ANY order */}
                                     {session?.user?.role === "ADMIN" && (
                                       <>
-                                        {row.order.status !== "DISPATCHED" && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => openEditDialog(row.order)}
-                                            className="hover:bg-blue-100 dark:hover:bg-gray-800"
-                                            title="Edit Order"
-                                          >
-                                            <Edit className="h-4 w-4 text-blue-500" />
-                                          </Button>
-                                        )}
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => openEditDialog(row.order)}
+                                          className="hover:bg-blue-100 dark:hover:bg-gray-800"
+                                          title="Edit Order"
+                                        >
+                                          <Edit className="h-4 w-4 text-blue-500" />
+                                        </Button>
                                         <Button
                                           variant="ghost"
                                           size="icon"
@@ -1165,9 +1173,10 @@ export function OrderManagement() {
                               <p className="text-xs text-muted-foreground">Qty</p>
                               <Input
                                 type="number"
-                                min="1"
+                                step="0.1"
+                                min="0"
                                 value={item.quantity}
-                                onChange={(e) => updateOrderItem(index, "quantity", parseInt(e.target.value) || 1)}
+                                onChange={(e) => updateOrderItem(index, "quantity", parseFloat(e.target.value) || 0)}
                                 className="w-full h-8 text-center"
                               />
                             </div>
@@ -1236,9 +1245,10 @@ export function OrderManagement() {
                               <TableCell className="text-center">
                                 <Input
                                   type="number"
-                                  min="1"
+                                  step="0.1"
+                                  min="0"
                                   value={item.quantity}
-                                  onChange={(e) => updateOrderItem(index, "quantity", parseInt(e.target.value) || 1)}
+                                  onChange={(e) => updateOrderItem(index, "quantity", parseFloat(e.target.value) || 0)}
                                   className="w-16 h-8 text-center mx-auto"
                                 />
                               </TableCell>
@@ -1495,9 +1505,10 @@ export function OrderManagement() {
                               <p className="text-xs text-muted-foreground">Qty</p>
                               <Input
                                 type="number"
-                                min="1"
+                                step="0.1"
+                                min="0"
                                 value={item.quantity}
-                                onChange={(e) => updateEditItem(index, "quantity", parseInt(e.target.value) || 1)}
+                                onChange={(e) => updateEditItem(index, "quantity", parseFloat(e.target.value) || 0)}
                                 className="w-full h-8 text-center"
                               />
                             </div>
@@ -1565,9 +1576,10 @@ export function OrderManagement() {
                               <TableCell className="text-center">
                                 <Input
                                   type="number"
-                                  min="1"
+                                  step="0.1"
+                                  min="0"
                                   value={item.quantity}
-                                  onChange={(e) => updateEditItem(index, "quantity", parseInt(e.target.value) || 1)}
+                                  onChange={(e) => updateEditItem(index, "quantity", parseFloat(e.target.value) || 0)}
                                   className="w-16 h-8 text-center mx-auto border-orange-200 focus:border-orange-400"
                                 />
                               </TableCell>
