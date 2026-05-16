@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
           ]
         },
         fcmOptions: {
-          link: 
+          link:"/"
         }
       }
     }
