@@ -45,6 +45,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Plus, Pencil, Trash2, Package, Search, Upload, Download, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
+import { format } from "date-fns"
+import * as XLSX from "xlsx"
 
 interface Product {
   id: string
@@ -343,6 +345,45 @@ export function ProductManagement() {
     }
   }
 
+  // Export products to Excel
+  const exportProductsToExcel = () => {
+    if (filteredProducts.length === 0) {
+      toast.error("No products to export")
+      return
+    }
+
+    const headers = [
+      "Product Name", "Category", "Product Price", "Unit Price", "Packing", 
+      "Discount %", "Extra Discount %", "Description", "Status", "Created Date"
+    ]
+    
+    const rows = filteredProducts.map(p => [
+      p.name,
+      p.category?.name || "Uncategorized",
+      p.productPrice,
+      p.unitPrice,
+      p.packingDetail,
+      p.discountPercent,
+      p.extraDiscountPercent,
+      p.description || "",
+      p.isActive ? "Active" : "Inactive",
+      "" // Created date not available in product interface
+    ])
+
+    const worksheetData = [headers, ...rows]
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
+    
+    // Set column widths
+    worksheet['!cols'] = headers.map((_, i) => ({
+      wch: Math.max(...worksheetData.map(row => String(row[i] || "").length)) + 2
+    }))
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, worksheet, "Products")
+    XLSX.writeFile(wb, `products_${format(new Date(), "yyyy-MM-dd")}.xlsx`)
+    toast.success("Products exported to Excel")
+  }
+
   // Filter products
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -431,6 +472,12 @@ export function ProductManagement() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Export Excel Button */}
+            <Button variant="outline" onClick={exportProductsToExcel} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export Excel
+            </Button>
 
             {/* Add Product Button */}
             <Dialog open={dialogOpen} onOpenChange={(open) => {
