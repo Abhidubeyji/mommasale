@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare notification payload
-    const notificationTitle = title || "🛒 नया Order मिला!"
+    const notificationTitle = title || "🛒 ONE ORDER FOUND , नया Order प्राप्त हुआ!"
     const notificationBody = messageBody || `Order #${orderId || 'New'} - ${shopkeeperName || 'Unknown'} - ₹${amount || '0'}`
 
     const tokens = allRecipients
