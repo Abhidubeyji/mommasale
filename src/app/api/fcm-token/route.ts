@@ -3,6 +3,29 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 
+// GET - Check if user has FCM token
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { fcmToken: true }
+    })
+
+    return NextResponse.json({
+      hasToken: !!user?.fcmToken,
+      token: user?.fcmToken ? 'exists' : null
+    })
+  } catch (error) {
+    console.error("Get FCM token error:", error)
+    return NextResponse.json({ error: "Failed to get FCM token status" }, { status: 500 })
+  }
+}
+
 // POST - Save FCM token for the current user
 export async function POST(request: NextRequest) {
   try {

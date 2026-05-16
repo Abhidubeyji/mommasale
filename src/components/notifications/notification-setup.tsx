@@ -8,24 +8,49 @@ import { requestNotificationPermission, getNotificationPermission, isNotificatio
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 
+type NotificationState = 'enabled' | 'disabled' | 'blocked' | 'loading'
+
 export function NotificationSetup() {
   const { data: session } = useSession()
-  const [permission, setPermission] = useState<NotificationPermission | null>(null)
+  const [state, setState] = useState<NotificationState>('loading')
   const [loading, setLoading] = useState(false)
-  const [supported, setSupported] = useState(true)
 
+  // Check notification status on mount
   useEffect(() => {
-    // Check if notifications are supported
-    const isSupported = isNotificationSupported()
-    setSupported(isSupported)
+    checkNotificationStatus()
+  }, [session])
 
-    if (isSupported) {
-      setPermission(getNotificationPermission())
+  const checkNotificationStatus = async () => {
+    if (!isNotificationSupported()) {
+      setState('disabled')
+      return
     }
-  }, [])
+
+    try {
+      // Check if user has FCM token in database
+      const response = await fetch('/api/fcm-token')
+      if (response.ok) {
+        const data = await response.json()
+        const browserPermission = getNotificationPermission()
+
+        if (browserPermission === 'denied') {
+          setState('blocked')
+        } else if (data.hasToken && browserPermission === 'granted') {
+          setState('enabled')
+        } else {
+          setState('disabled')
+        }
+      } else {
+        setState('disabled')
+      }
+    } catch (error) {
+      console.error('Error checking notification status:', error)
+      setState('disabled')
+    }
+  }
 
   const handleEnableNotifications = async () => {
-    if (!supported) {
+    if (!isNotificationSupported()) {
       toast.error('Browser notifications are not supported in this browser')
       return
     }
@@ -45,13 +70,20 @@ export function NotificationSetup() {
         })
 
         if (response.ok) {
-          setPermission('granted')
+          setState('enabled')
           toast.success('Notifications enabled successfully!')
         } else {
-          toast.error('Failed to save notification settings')
+          const errorData = await response.json()
+          toast.error(errorData.error || 'Failed to save notification settings')
         }
       } else {
-        toast.error('Failed to get notification permission')
+        const permission = getNotificationPermission()
+        if (permission === 'denied') {
+          setState('blocked')
+          toast.error('Notification permission denied. Please allow in browser settings.')
+        } else {
+          toast.error('Failed to get notification permission. Please try again.')
+        }
       }
     } catch (error) {
       console.error('Error enabling notifications:', error)
@@ -69,7 +101,7 @@ export function NotificationSetup() {
       })
 
       if (response.ok) {
-        setPermission(getNotificationPermission())
+        setState('disabled')
         toast.success('Notifications disabled')
       } else {
         toast.error('Failed to disable notifications')
@@ -87,7 +119,7 @@ export function NotificationSetup() {
     return null
   }
 
-  if (!supported) {
+  if (!isNotificationSupported()) {
     return (
       <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950">
         <CardHeader>
@@ -96,7 +128,7 @@ export function NotificationSetup() {
             Notifications Not Supported
           </CardTitle>
           <CardDescription>
-            Your browser doesn&apos;t support push notifications. Please use a modern browser like Chrome, Firefox, or Edge.
+            Your browser doesn&apos;t support push notifications. Please use Chrome, Firefox, or Edge.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -115,82 +147,89 @@ export function NotificationSetup() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {permission === 'granted' ? (
-              <>
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                  <Check className="h-5 w-5" />
-                  <span className="font-medium">Enabled</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  You will receive notifications for new orders
-                </p>
-              </>
-            ) : permission === 'denied' ? (
-              <>
-                <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                  <BellOff className="h-5 w-5" />
-                  <span className="font-medium">Blocked</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Notifications are blocked. Please enable them in your browser settings.
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
-                  <Bell className="h-5 w-5" />
-                  <span className="font-medium">Not Enabled</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Enable notifications to get alerts for new orders
-                </p>
-              </>
-            )}
+        {state === 'loading' ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Checking notification status...</span>
           </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {state === 'enabled' ? (
+                <>
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <Check className="h-5 w-5" />
+                    <span className="font-medium">Enabled</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    You will receive notifications for new orders
+                  </p>
+                </>
+              ) : state === 'blocked' ? (
+                <>
+                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                    <BellOff className="h-5 w-5" />
+                    <span className="font-medium">Blocked</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Notifications are blocked in browser settings
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                    <Bell className="h-5 w-5" />
+                    <span className="font-medium">Disabled</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Enable notifications to get alerts for new orders
+                  </p>
+                </>
+              )}
+            </div>
 
-          <div className="flex gap-2">
-            {permission === 'granted' ? (
-              <Button
-                variant="outline"
-                onClick={handleDisableNotifications}
-                disabled={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <BellOff className="h-4 w-4 mr-2" />
-                )}
-                Disable
-              </Button>
-            ) : permission !== 'denied' ? (
-              <Button
-                onClick={handleEnableNotifications}
-                disabled={loading}
-                className="bg-orange-500 hover:bg-orange-600"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Bell className="h-4 w-4 mr-2" />
-                )}
-                Enable Notifications
-              </Button>
-            ) : null}
+            <div className="flex gap-2">
+              {state === 'enabled' ? (
+                <Button
+                  variant="outline"
+                  onClick={handleDisableNotifications}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <BellOff className="h-4 w-4 mr-2" />
+                  )}
+                  Disable
+                </Button>
+              ) : state !== 'blocked' ? (
+                <Button
+                  onClick={handleEnableNotifications}
+                  disabled={loading}
+                  className="bg-orange-500 hover:bg-orange-600"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Bell className="h-4 w-4 mr-2" />
+                  )}
+                  Enable Notifications
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
+        )}
 
-        {permission === 'denied' && (
+        {state === 'blocked' && (
           <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg text-sm">
-            <p className="text-red-700 dark:text-red-300">
-              <strong>How to enable notifications:</strong>
+            <p className="text-red-700 dark:text-red-300 font-medium">
+              How to enable notifications:
             </p>
-            <ol className="list-decimal list-inside mt-2 text-red-600 dark:text-red-400">
-              <li>Click the lock icon in your browser&apos;s address bar</li>
-              <li>Find &quot;Notifications&quot; in the permissions list</li>
+            <ol className="list-decimal list-inside mt-2 text-red-600 dark:text-red-400 space-y-1">
+              <li>Click the lock/info icon in browser address bar</li>
+              <li>Find &quot;Notifications&quot; in permissions</li>
               <li>Change it to &quot;Allow&quot;</li>
-              <li>Refresh this page</li>
+              <li>Refresh this page and click Enable</li>
             </ol>
           </div>
         )}
