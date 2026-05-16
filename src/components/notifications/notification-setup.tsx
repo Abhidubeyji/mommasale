@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { Bell, BellOff, Check, AlertCircle, Loader2, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { requestNotificationPermission, getNotificationPermission, isNotificationSupported } from '@/lib/firebase'
+import { requestNotificationPermission, getNotificationPermission, isNotificationSupported, onMessageListener } from '@/lib/firebase'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 
@@ -14,10 +14,22 @@ export function NotificationSetup() {
   const { data: session } = useSession()
   const [state, setState] = useState<NotificationState>('loading')
   const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   // Check notification status on mount
   useEffect(() => {
     checkNotificationStatus()
+    
+    // Listen for foreground messages
+    onMessageListener().then((payload) => {
+      if (payload) {
+        console.log('Foreground notification:', payload)
+        const notificationPayload = payload as { notification?: { title?: string; body?: string } }
+        toast.success(notificationPayload.notification?.title || 'New Notification', {
+          description: notificationPayload.notification?.body || ''
+        })
+      }
+    })
   }, [session])
 
   const checkNotificationStatus = async () => {
