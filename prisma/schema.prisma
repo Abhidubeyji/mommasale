@@ -156,6 +156,7 @@ model User {
   role        String        @default("SALES")
   isActive    Boolean       @default(true)
   canExport   Boolean       @default(true)
+  fcmToken    String?       // Firebase Cloud Messaging token for push notifications
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   orders      Order[]

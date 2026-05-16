@@ -1,5 +1,5 @@
 'use client'
-
+import { NotificationSetup } from "@/components/notifications/notification-setup"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -182,7 +182,8 @@ export function DashboardContent() {
           </CardContent>
         </Card>
       </div>
-
+      {/* Notification Setup */}
+       <NotificationSetup />
       {/* Recent Orders */}
       <Card className="border-orange-200 dark:border-gray-800">
         <CardHeader>

@@ -187,7 +187,22 @@ export async function POST(request: NextRequest) {
         }
       }
     })
-
+// Send push notification to admin about new order
+try {
+  await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/notify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: '🛒 नया Order मिला!',
+      body: `Order #${orderId} - ${order.shopkeeper.shopName} - ₹${Math.round(totalAmount)}`,
+      orderId: orderId,
+      amount: Math.round(totalAmount),
+      shopkeeperName: order.shopkeeper.shopName
+    })
+  })
+} catch (notifyError) {
+  console.error('Error sending notification:', notifyError)
+}
     return NextResponse.json(order)
   } catch (error) {
     console.error("Create order error:", error)
