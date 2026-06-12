@@ -18,7 +18,9 @@ import {
   CreditCard, 
   Tags,
   Menu,
-  LogOut
+  LogOut,
+  History,
+  Database
 } from "lucide-react"
 
 interface NavItem {
@@ -30,12 +32,14 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["ADMIN", "SALES", "VIEWER"] },
-  { id: "users", label: "Users", icon: <Users className="h-5 w-5" />, roles: ["ADMIN", "VIEWER"] },
-  { id: "categories", label: "Categories", icon: <Tags className="h-5 w-5" />, roles: ["ADMIN", "VIEWER"] },
+  { id: "users", label: "Users", icon: <Users className="h-5 w-5" />, roles: ["ADMIN"] },
+  { id: "categories", label: "Categories", icon: <Tags className="h-5 w-5" />, roles: ["ADMIN"] },
   { id: "products", label: "Products", icon: <Package className="h-5 w-5" />, roles: ["ADMIN", "SALES", "VIEWER"] },
-  { id: "shopkeepers", label: "Shopkeepers", icon: <Store className="h-5 w-5" />, roles: ["ADMIN", "SALES", "VIEWER"] },
-  { id: "orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" />, roles: ["ADMIN", "SALES", "VIEWER"] },
-  { id: "payments", label: "Payments", icon: <CreditCard className="h-5 w-5" />, roles: ["ADMIN", "SALES", "VIEWER"] },
+  { id: "shopkeepers", label: "Shopkeepers", icon: <Store className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
+  { id: "orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
+  { id: "payments", label: "Payments", icon: <CreditCard className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
+  { id: "loginLogs", label: "Login Logs", icon: <History className="h-5 w-5" />, roles: ["ADMIN"] },
+  { id: "backup", label: "Backup/Restore", icon: <Database className="h-5 w-5" />, roles: ["ADMIN"] },
 ]
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {

@@ -2,6 +2,23 @@ import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { db } from "@/lib/db"
 import { compare } from "bcrypt"
+import { randomUUID } from "crypto"
+
+// Helper function to create login log
+async function createLoginLog(userId: string, success: boolean) {
+  try {
+    await db.loginLog.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        success,
+        loginTime: new Date()
+      }
+    })
+  } catch (error) {
+    console.error("Failed to create login log:", error)
+  }
+}
 
 declare module "next-auth" {
   interface User {
@@ -27,6 +44,8 @@ declare module "next-auth/jwt" {
   }
 }
 
+const isProduction = process.env.NODE_ENV === 'production'
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -51,6 +70,10 @@ export const authOptions: NextAuthOptions = {
 
         if (!user || !user.isActive) {
           console.log("User not found or inactive")
+          // Log failed attempt if user exists but is inactive
+          if (user && !user.isActive) {
+            await createLoginLog(user.id, false)
+          }
           return null
         }
 
@@ -59,9 +82,13 @@ export const authOptions: NextAuthOptions = {
 
         if (!passwordMatch) {
           console.log("Password mismatch")
+          // Log failed login attempt
+          await createLoginLog(user.id, false)
           return null
         }
 
+        // Log successful login
+        await createLoginLog(user.id, true)
         console.log("Login successful for user:", user.id)
         return {
           id: user.id,
@@ -97,6 +124,17 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt"
   },
+  cookies: {
+    sessionToken: {
+      name: `${isProduction ? '__Secure-' : ''}next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: isProduction,
+      },
+    },
+  },
   secret: process.env.NEXTAUTH_SECRET || "mom-masale-secret-key-2024-super-secure",
-  debug: true
+  debug: process.env.NODE_ENV === 'development'
 }

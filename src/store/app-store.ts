@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type ViewType = "dashboard" | "users" | "categories" | "products" | "shopkeepers" | "orders" | "payments"
+export type ViewType = "dashboard" | "users" | "categories" | "products" | "shopkeepers" | "orders" | "payments" | "loginLogs" | "backup"
 
 interface AppState {
   currentView: ViewType

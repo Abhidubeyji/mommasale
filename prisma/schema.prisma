@@ -162,6 +162,21 @@ model User {
   orders      Order[]
   payments    Payment[]
   shopkeepers Shopkeeper[]
+  loginLogs   LoginLog[]
 
   @@map("users")
+}
+
+model LoginLog {
+  id        String   @id
+  userId    String
+  loginTime DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  success   Boolean  @default(true)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([loginTime])
+  @@map("login_logs")
 }

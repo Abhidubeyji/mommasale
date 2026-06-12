@@ -128,13 +128,21 @@ export function ProductManagement() {
   }
 
   useEffect(() => {
-    fetchProducts()
     fetchCategories()
   }, [])
 
+  useEffect(() => {
+    // Fetch products when session is available
+    if (session !== undefined) {
+      fetchProducts()
+    }
+  }, [session])
+
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products")
+      // Admin should see all products including inactive ones
+      const url = session?.user?.role === "ADMIN" ? "/api/products?includeInactive=true" : "/api/products"
+      const res = await fetch(url)
       if (res.ok) {
         setProducts(await res.json())
       }
