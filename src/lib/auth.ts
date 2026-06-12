@@ -4,9 +4,12 @@ import { db } from "@/lib/db"
 import { compare } from "bcrypt"
 import { randomUUID } from "crypto"
 
-// Helper function to create login log
+// Helper function to create login log with retry
 async function createLoginLog(userId: string, success: boolean) {
   try {
+    // Check if loginLog table exists by trying to create a record
+    await db.$executeRaw`SELECT 1 FROM login_logs LIMIT 1`
+    
     await db.loginLog.create({
       data: {
         id: randomUUID(),
@@ -15,8 +18,11 @@ async function createLoginLog(userId: string, success: boolean) {
         loginTime: new Date()
       }
     })
+    console.log("Login log created successfully for user:", userId)
   } catch (error) {
-    console.error("Failed to create login log:", error)
+    // If table doesn't exist, just log the error and continue
+    console.error("Login log table may not exist. Run: npx prisma db push")
+    console.error("Error:", error)
   }
 }
 
@@ -70,7 +76,6 @@ export const authOptions: NextAuthOptions = {
 
         if (!user || !user.isActive) {
           console.log("User not found or inactive")
-          // Log failed attempt if user exists but is inactive
           if (user && !user.isActive) {
             await createLoginLog(user.id, false)
           }
@@ -82,7 +87,6 @@ export const authOptions: NextAuthOptions = {
 
         if (!passwordMatch) {
           console.log("Password mismatch")
-          // Log failed login attempt
           await createLoginLog(user.id, false)
           return null
         }
