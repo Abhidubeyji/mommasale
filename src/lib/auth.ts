@@ -4,25 +4,37 @@ import { db } from "@/lib/db"
 import { compare } from "bcrypt"
 import { randomUUID } from "crypto"
 
-// Helper function to create login log with retry
+// Helper function to create login log using raw SQL
 async function createLoginLog(userId: string, success: boolean) {
   try {
-    // Check if loginLog table exists by trying to create a record
-    await db.$executeRaw`SELECT 1 FROM login_logs LIMIT 1`
+    const id = randomUUID()
+    const loginTime = new Date().toISOString()
     
-    await db.loginLog.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        success,
-        loginTime: new Date()
-      }
-    })
-    console.log("Login log created successfully for user:", userId)
+    // Try to create table first
+    try {
+      await db.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS login_logs (
+          id TEXT PRIMARY KEY,
+          "userId" TEXT NOT NULL,
+          "loginTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "ipAddress" TEXT,
+          "userAgent" TEXT,
+          success BOOLEAN NOT NULL DEFAULT true
+        )
+      `)
+    } catch (e) {
+      // Table might exist
+    }
+
+    // Insert login log
+    await db.$executeRawUnsafe(`
+      INSERT INTO login_logs (id, "userId", "loginTime", success)
+      VALUES ('${id}', '${userId}', '${loginTime}', ${success})
+    `)
+    
+    console.log("Login log created for user:", userId, "success:", success)
   } catch (error) {
-    // If table doesn't exist, just log the error and continue
-    console.error("Login log table may not exist. Run: npx prisma db push")
-    console.error("Error:", error)
+    console.error("Failed to create login log:", error)
   }
 }
 
@@ -61,10 +73,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        console.log("Authorize called with:", { userId: credentials?.userId })
-        
         if (!credentials?.userId || !credentials?.password) {
-          console.log("Missing credentials")
           return null
         }
 
@@ -72,10 +81,7 @@ export const authOptions: NextAuthOptions = {
           where: { id: credentials.userId }
         })
 
-        console.log("User found:", user ? { id: user.id, name: user.name, role: user.role, isActive: user.isActive } : null)
-
         if (!user || !user.isActive) {
-          console.log("User not found or inactive")
           if (user && !user.isActive) {
             await createLoginLog(user.id, false)
           }
@@ -83,17 +89,15 @@ export const authOptions: NextAuthOptions = {
         }
 
         const passwordMatch = await compare(credentials.password, user.password)
-        console.log("Password match:", passwordMatch)
 
         if (!passwordMatch) {
-          console.log("Password mismatch")
           await createLoginLog(user.id, false)
           return null
         }
 
         // Log successful login
         await createLoginLog(user.id, true)
-        console.log("Login successful for user:", user.id)
+        
         return {
           id: user.id,
           email: user.email || undefined,
@@ -140,5 +144,4 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET || "mom-masale-secret-key-2024-super-secure",
-  debug: process.env.NODE_ENV === 'development'
 }
