@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { randomUUID } from "crypto"
-import { hash } from "bcrypt"
 
 // GET - Export all data as JSON (Admin only)
 export async function GET(request: NextRequest) {
@@ -14,36 +12,52 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Export all data
+    // Export all data with error handling for each table
     const backup = {
       exportDate: new Date().toISOString(),
       version: "1.0",
-      data: {
-        users: await db.user.findMany({
-          select: {
-            id: true,
-            email: true,
-            password: true,
-            name: true,
-            role: true,
-            isActive: true,
-            canExport: true,
-            fcmToken: true,
-            createdAt: true,
-            updatedAt: true,
-          }
-        }),
-        categories: await db.category.findMany(),
-        products: await db.product.findMany(),
-        shopkeepers: await db.shopkeeper.findMany(),
-        orders: await db.order.findMany(),
-        orderItems: await db.orderItem.findMany(),
-        payments: await db.payment.findMany(),
-        outstanding: await db.outstanding.findMany(),
-        units: await db.unit.findMany(),
-        orderCounter: await db.orderCounter.findMany(),
-        loginLogs: await db.loginLog.findMany(),
+      data: {} as Record<string, unknown[]>
+    }
+
+    // Helper to safely fetch data
+    const safeFetch = async (name: string, query: () => Promise<unknown[]>) => {
+      try {
+        return await query()
+      } catch (e) {
+        console.error(`Failed to fetch ${name}:`, e)
+        return []
       }
+    }
+
+    backup.data.users = await safeFetch("users", () => db.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        role: true,
+        isActive: true,
+        canExport: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    }))
+
+    backup.data.categories = await safeFetch("categories", () => db.category.findMany())
+    backup.data.products = await safeFetch("products", () => db.product.findMany())
+    backup.data.shopkeepers = await safeFetch("shopkeepers", () => db.shopkeeper.findMany())
+    backup.data.orders = await safeFetch("orders", () => db.order.findMany())
+    backup.data.orderItems = await safeFetch("orderItems", () => db.orderItem.findMany())
+    backup.data.payments = await safeFetch("payments", () => db.payment.findMany())
+    backup.data.outstanding = await safeFetch("outstanding", () => db.outstanding.findMany())
+    backup.data.units = await safeFetch("units", () => db.unit.findMany())
+
+    // Try to fetch loginLogs if table exists
+    try {
+      backup.data.loginLogs = await db.loginLog.findMany()
+    } catch (e) {
+      console.log("loginLogs table not found, skipping")
+      backup.data.loginLogs = []
     }
 
     return NextResponse.json(backup)
@@ -81,12 +95,12 @@ export async function POST(request: NextRequest) {
       units: { imported: 0, skipped: 0 },
     }
 
-    // Import in order of dependencies
-    // 1. Users first (they're referenced by many other tables)
+    // Import users
     if (data.users && options?.users !== false) {
       for (const user of data.users) {
         try {
-          await db.user.create({ data: user })
+          const { loginLogs, ...userData } = user
+          await db.user.create({ data: userData })
           results.users.imported++
         } catch (e) {
           results.users.skipped++
@@ -94,7 +108,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Categories
+    // Import categories
     if (data.categories && options?.categories !== false) {
       for (const category of data.categories) {
         try {
@@ -106,7 +120,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Units
+    // Import units
     if (data.units && options?.units !== false) {
       for (const unit of data.units) {
         try {
@@ -118,7 +132,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Products (depend on categories)
+    // Import products
     if (data.products && options?.products !== false) {
       for (const product of data.products) {
         try {
@@ -130,7 +144,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Shopkeepers (depend on users)
+    // Import shopkeepers
     if (data.shopkeepers && options?.shopkeepers !== false) {
       for (const shopkeeper of data.shopkeepers) {
         try {
@@ -142,7 +156,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6. Orders (depend on users and shopkeepers)
+    // Import orders
     if (data.orders && options?.orders !== false) {
       for (const order of data.orders) {
         try {
@@ -154,7 +168,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Order Items (depend on orders and products)
+    // Import order items
     if (data.orderItems && options?.orderItems !== false) {
       for (const item of data.orderItems) {
         try {
@@ -166,7 +180,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Payments (depend on orders, users, shopkeepers)
+    // Import payments
     if (data.payments && options?.payments !== false) {
       for (const payment of data.payments) {
         try {
@@ -178,7 +192,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 9. Outstanding (depend on shopkeepers)
+    // Import outstanding
     if (data.outstanding && options?.outstanding !== false) {
       for (const outstanding of data.outstanding) {
         try {
