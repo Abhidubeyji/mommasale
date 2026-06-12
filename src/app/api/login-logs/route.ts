@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
-    const limit = parseInt(searchParams.get("limit") || "100")
+    const limit = parseInt(searchParams.get("limit") || "500")
     const offset = parseInt(searchParams.get("offset") || "0")
 
     const where: Record<string, unknown> = {}
@@ -22,29 +22,47 @@ export async function GET(request: NextRequest) {
       where.userId = userId
     }
 
-    const logs = await db.loginLog.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
+    // Try to fetch login logs
+    let logs = []
+    let total = 0
+    
+    try {
+      logs = await db.loginLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
           }
-        }
-      },
-      orderBy: { loginTime: "desc" },
-      take: limit,
-      skip: offset
-    })
-
-    const total = await db.loginLog.count({ where })
+        },
+        orderBy: { loginTime: "desc" },
+        take: limit,
+        skip: offset
+      })
+      
+      total = await db.loginLog.count({ where })
+    } catch (dbError) {
+      console.error("Database error fetching login logs:", dbError)
+      // Return empty logs if table doesn't exist
+      return NextResponse.json({ 
+        logs: [], 
+        total: 0,
+        message: "Login logs table not found. Run: npx prisma db push"
+      })
+    }
 
     return NextResponse.json({ logs, total })
   } catch (error) {
     console.error("Get login logs error:", error)
-    return NextResponse.json({ error: "Failed to fetch login logs" }, { status: 500 })
+    return NextResponse.json({ 
+      error: "Failed to fetch login logs",
+      logs: [],
+      total: 0
+    }, { status: 500 })
   }
 }
 
@@ -60,21 +78,27 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const daysToKeep = parseInt(searchParams.get("days") || "30")
 
-    // Delete logs older than specified days
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
 
-    const result = await db.loginLog.deleteMany({
-      where: {
-        loginTime: {
-          lt: cutoffDate
+    try {
+      const result = await db.loginLog.deleteMany({
+        where: {
+          loginTime: {
+            lt: cutoffDate
+          }
         }
-      }
-    })
+      })
 
-    return NextResponse.json({ 
-      message: `Deleted ${result.count} login logs older than ${daysToKeep} days` 
-    })
+      return NextResponse.json({ 
+        message: `Deleted ${result.count} login logs older than ${daysToKeep} days` 
+      })
+    } catch (dbError) {
+      console.error("Database error deleting login logs:", dbError)
+      return NextResponse.json({ 
+        message: "No logs deleted. Table may not exist yet." 
+      })
+    }
   } catch (error) {
     console.error("Delete login logs error:", error)
     return NextResponse.json({ error: "Failed to delete login logs" }, { status: 500 })

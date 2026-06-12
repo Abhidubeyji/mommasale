@@ -21,10 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { History, Trash2, Search } from "lucide-react"
+import { History, Trash2, Search, Download } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { Input } from "@/components/ui/input"
+import * as XLSX from "xlsx"
 
 interface LoginLog {
   id: string
@@ -67,8 +68,11 @@ export function LoginLogs() {
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
-        setLogs(data.logs)
-        setTotal(data.total)
+        setLogs(data.logs || [])
+        setTotal(data.total || 0)
+      } else {
+        console.error("Failed to fetch logs:", res.status)
+        toast.error("Failed to fetch login logs")
       }
     } catch (error) {
       console.error("Error fetching login logs:", error)
@@ -108,6 +112,43 @@ export function LoginLogs() {
     }
   }
 
+  // Export to Excel
+  const exportToExcel = () => {
+    if (filteredLogs.length === 0) {
+      toast.error("No logs to export")
+      return
+    }
+
+    const headers = ["User Name", "User ID", "Email", "Role", "Login Time", "Status"]
+    
+    const rows = filteredLogs.map(log => [
+      log.user.name,
+      log.user.id,
+      log.user.email || "",
+      log.user.role,
+      format(new Date(log.loginTime), "dd/MM/yyyy HH:mm:ss"),
+      log.success ? "Success" : "Failed"
+    ])
+
+    const worksheetData = [headers, ...rows]
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
+    
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 10 },
+      { wch: 20 },
+      { wch: 10 }
+    ]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, worksheet, "Login Logs")
+    XLSX.writeFile(wb, `login-logs-${format(new Date(), "yyyy-MM-dd")}.xlsx`)
+    toast.success("Login logs exported to Excel")
+  }
+
   // Filter logs by search term
   const filteredLogs = logs.filter(log => {
     if (!searchTerm) return true
@@ -138,10 +179,16 @@ export function LoginLogs() {
           <p className="text-sm sm:text-base text-muted-foreground">Track user login activity</p>
         </div>
 
-        <Button variant="outline" onClick={handleClearOldLogs} className="text-red-600 border-red-200">
-          <Trash2 className="mr-2 h-4 w-4" />
-          Clear Old Logs
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportToExcel} className="border-green-500 text-green-600">
+            <Download className="mr-2 h-4 w-4" />
+            Export Excel
+          </Button>
+          <Button variant="outline" onClick={handleClearOldLogs} className="text-red-600 border-red-200">
+            <Trash2 className="mr-2 h-4 w-4" />
+            Clear Old Logs
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -210,7 +257,7 @@ export function LoginLogs() {
             ))}
             {filteredLogs.length === 0 && (
               <div className="text-center text-muted-foreground py-8">
-                No login logs found
+                No login logs found. Login once to see logs.
               </div>
             )}
           </div>
@@ -223,6 +270,7 @@ export function LoginLogs() {
                   <TableRow>
                     <TableHead className="whitespace-nowrap">User Name</TableHead>
                     <TableHead className="whitespace-nowrap">User ID</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
                     <TableHead className="whitespace-nowrap">Role</TableHead>
                     <TableHead className="whitespace-nowrap">Login Time</TableHead>
                     <TableHead className="whitespace-nowrap">Status</TableHead>
@@ -233,6 +281,7 @@ export function LoginLogs() {
                     <TableRow key={log.id}>
                       <TableCell className="font-medium">{log.user.name}</TableCell>
                       <TableCell className="text-muted-foreground">{log.user.id}</TableCell>
+                      <TableCell className="text-muted-foreground">{log.user.email || "-"}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{log.user.role}</Badge>
                       </TableCell>
@@ -248,8 +297,8 @@ export function LoginLogs() {
                   ))}
                   {filteredLogs.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                        No login logs found
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        No login logs found. Login once to see logs.
                       </TableCell>
                     </TableRow>
                   )}
