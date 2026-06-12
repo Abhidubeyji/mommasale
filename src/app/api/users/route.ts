@@ -4,15 +4,16 @@ import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { hash } from "bcrypt"
 
-// GET - List all users (Admin and Viewer)
+// GET - List all users with last login (Admin only)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session || (session.user.role !== "ADMIN" && session.user.role !== "VIEWER")) {
+    if (!session || session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Get users
     const users = await db.user.findMany({
       select: {
         id: true,
@@ -26,7 +27,32 @@ export async function GET() {
       orderBy: { createdAt: "desc" }
     })
 
-    return NextResponse.json(users)
+    // Get last login for each user using raw query
+    let lastLogins: Array<{ userId: string; lastLogin: Date }> = []
+    try {
+      lastLogins = await db.$queryRaw`
+        SELECT "userId", MAX("loginTime") as "lastLogin"
+        FROM login_logs
+        WHERE success = true
+        GROUP BY "userId"
+      ` as Array<{ userId: string; lastLogin: Date }>
+    } catch (e) {
+      console.log("Could not fetch last logins:", e)
+    }
+
+    // Create a map of userId to lastLogin
+    const lastLoginMap = new Map<string, Date>()
+    lastLogins.forEach((item) => {
+      lastLoginMap.set(item.userId, item.lastLogin)
+    })
+
+    // Add lastLogin to each user
+    const usersWithLastLogin = users.map(user => ({
+      ...user,
+      lastLogin: lastLoginMap.get(user.id) || null
+    }))
+
+    return NextResponse.json(usersWithLastLogin)
   } catch (error) {
     console.error("Get users error:", error)
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
@@ -49,7 +75,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User Name, Full Name, Password and Role are required" }, { status: 400 })
     }
 
-    // Check if user ID already exists
     const existingUser = await db.user.findUnique({
       where: { id }
     })
@@ -143,12 +168,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
-    // Prevent deleting self
     if (id === session.user.id) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
     }
 
-    // Check if user exists
     const user = await db.user.findUnique({
       where: { id }
     })
@@ -157,7 +180,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Delete user (this will cascade delete related data based on schema)
     await db.user.delete({
       where: { id }
     })

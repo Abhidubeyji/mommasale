@@ -42,8 +42,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX, Clock } from "lucide-react"
 import { toast } from "sonner"
+import { format } from "date-fns"
 
 interface User {
   id: string
@@ -53,6 +54,7 @@ interface User {
   isActive: boolean
   canExport: boolean
   createdAt: string
+  lastLogin: string | null
 }
 
 const initialFormState = {
@@ -64,7 +66,6 @@ const initialFormState = {
 
 export function UserManagement() {
   const { data: session } = useSession()
-  const isAdmin = session?.user?.role === "ADMIN"
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -98,7 +99,6 @@ export function UserManagement() {
 
     try {
       if (editingUser) {
-        // Update existing user
         const updateData: Record<string, unknown> = {
           id: editingUser.id,
           name: formData.name,
@@ -123,7 +123,6 @@ export function UserManagement() {
           toast.error(data.error || "Failed to update user")
         }
       } else {
-        // Create new user
         if (!formData.id) {
           toast.error("User Name is required")
           setSaving(false)
@@ -253,6 +252,15 @@ export function UserManagement() {
     }
   }
 
+  const formatLastLogin = (lastLogin: string | null) => {
+    if (!lastLogin) return "Never"
+    try {
+      return format(new Date(lastLogin), "dd/MM/yyyy HH:mm")
+    } catch {
+      return "Never"
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -279,14 +287,12 @@ export function UserManagement() {
             setFormData(initialFormState)
           }
         }}>
-          {isAdmin && (
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
-                <Plus className="mr-2 h-4 w-4" />
-                Add User
-              </Button>
-            </DialogTrigger>
-          )}
+          <DialogTrigger asChild>
+            <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
+              <Plus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          </DialogTrigger>
           <DialogContent className="sm:max-w-md w-[95vw] max-w-[95vw] sm:w-auto sm:max-w-md p-0">
             <form onSubmit={handleSubmit}>
               <DialogHeader className="p-4 sm:p-6 pb-0">
@@ -370,14 +376,15 @@ export function UserManagement() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Full Name</TableHead>
                   <TableHead className="whitespace-nowrap">User Name</TableHead>
                   <TableHead className="whitespace-nowrap hidden sm:table-cell">Role</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
-                  <TableHead className="whitespace-nowrap hidden md:table-cell">Export</TableHead>
+                  <TableHead className="whitespace-nowrap hidden md:table-cell">Last Login</TableHead>
+                  <TableHead className="whitespace-nowrap hidden lg:table-cell">Export</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -396,69 +403,73 @@ export function UserManagement() {
                         {user.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="whitespace-nowrap hidden md:table-cell">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {formatLastLogin(user.lastLogin)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
                       <Badge variant={user.canExport ? "default" : "secondary"} className={user.canExport ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" : ""}>
                         {user.canExport ? "Enabled" : "Disabled"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {isAdmin && (
-                        <div className="flex justify-end gap-1 sm:gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(user)}
-                            className="hover:bg-orange-100 dark:hover:bg-gray-800"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4 text-orange-500" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleToggleExport(user)}
-                            disabled={user.id === session?.user?.id || user.role === "ADMIN"}
-                            className="hover:bg-blue-100 dark:hover:bg-gray-800"
-                            title={user.canExport ? "Disable Export" : "Enable Export"}
-                          >
-                            {user.canExport ? (
-                              <Download className="h-4 w-4 text-blue-500" />
-                            ) : (
-                              <FileX className="h-4 w-4 text-gray-400" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleToggleActive(user)}
-                            disabled={user.id === session?.user?.id}
-                            className="hover:bg-orange-100 dark:hover:bg-gray-800"
-                            title={user.isActive ? "Deactivate" : "Activate"}
-                          >
-                            {user.isActive ? (
-                              <UserX className="h-4 w-4 text-red-500" />
-                            ) : (
-                              <UserCheck className="h-4 w-4 text-green-500" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteClick(user)}
-                            disabled={user.id === session?.user?.id}
-                            className="hover:bg-red-100 dark:hover:bg-gray-800"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex justify-end gap-1 sm:gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(user)}
+                          className="hover:bg-orange-100 dark:hover:bg-gray-800"
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4 text-orange-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleToggleExport(user)}
+                          disabled={user.id === session?.user?.id || user.role === "ADMIN"}
+                          className="hover:bg-blue-100 dark:hover:bg-gray-800"
+                          title={user.canExport ? "Disable Export" : "Enable Export"}
+                        >
+                          {user.canExport ? (
+                            <Download className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <FileX className="h-4 w-4 text-gray-400" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleToggleActive(user)}
+                          disabled={user.id === session?.user?.id}
+                          className="hover:bg-orange-100 dark:hover:bg-gray-800"
+                          title={user.isActive ? "Deactivate" : "Activate"}
+                        >
+                          {user.isActive ? (
+                            <UserX className="h-4 w-4 text-red-500" />
+                          ) : (
+                            <UserCheck className="h-4 w-4 text-green-500" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClick(user)}
+                          disabled={user.id === session?.user?.id}
+                          className="hover:bg-red-100 dark:hover:bg-gray-800"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No users found
                     </TableCell>
                   </TableRow>
