@@ -96,6 +96,7 @@ export function ProductManagement() {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -397,7 +398,10 @@ export function ProductManagement() {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.category?.name?.toLowerCase() || "uncategorized").includes(searchTerm.toLowerCase())
     const matchesCategory = categoryFilter === "all" || product.category?.id === categoryFilter
-    return matchesSearch && matchesCategory
+    const matchesStatus = statusFilter === "all" || 
+      (statusFilter === "active" && product.isActive) || 
+      (statusFilter === "inactive" && !product.isActive)
+    return matchesSearch && matchesCategory && matchesStatus
   })
 
   if (loading) {
@@ -657,6 +661,18 @@ export function ProductManagement() {
                 ))}
               </SelectContent>
             </Select>
+            {session?.user?.role === "ADMIN" && (
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-36 h-10 sm:h-11">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
