@@ -118,7 +118,12 @@ export function AdminDsr() {
       if (isRefresh) {
         setRefreshing(true)
       } else {
-        setLoading(true)
+        // Only set loading on initial load (when no reports yet)
+        if (reports.length === 0) {
+          setLoading(true)
+        } else {
+          setRefreshing(true)
+        }
       }
       const params = new URLSearchParams()
       if (userFilter !== "all") params.set("userId", userFilter)
@@ -140,7 +145,7 @@ export function AdminDsr() {
       }
     } catch (error) {
       console.error("Error fetching DSR reports:", error)
-      if (!isRefresh) {
+      if (!isRefresh && reports.length === 0) {
         toast.error("Failed to fetch DSR reports")
       }
     } finally {
