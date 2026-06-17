@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -92,13 +92,17 @@ export function AdminDsr() {
     fetchReports()
   }, [userFilter, startDate, endDate])
 
-  // Auto-refresh every 30 seconds
+  // Keep a ref to the latest fetchReports so the interval always calls the latest version
+  const fetchReportsRef = useRef(fetchReports)
+  fetchReportsRef.current = fetchReports
+
+  // Auto-refresh every 15 seconds - uses ref so always calls latest function
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchReports(true)
-    }, 30000) // 30 seconds
+      fetchReportsRef.current(true)
+    }, 15000) // 15 seconds
     return () => clearInterval(interval)
-  }, [userFilter, startDate, endDate])
+  }, []) // Empty deps - interval set only once
 
   const fetchUsers = async () => {
     try {

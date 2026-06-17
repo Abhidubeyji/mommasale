@@ -53,13 +53,14 @@ export async function GET(request: NextRequest) {
       query += ` AND d."userId" = $${paramIdx++}`
       params.push(userId)
     }
-    // Use DATE() to compare only date part - avoids timezone issues
+    // Use AT TIME ZONE 'Asia/Kolkata' to compare dates in IST
+    // This ensures records created in India show on the correct date
     if (startDate) {
-      query += ` AND DATE(d."createdAt") >= $${paramIdx++}::date`
+      query += ` AND (d."createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${paramIdx++}::date`
       params.push(startDate)
     }
     if (endDate) {
-      query += ` AND DATE(d."createdAt") <= $${paramIdx++}::date`
+      query += ` AND (d."createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${paramIdx++}::date`
       params.push(endDate)
     }
 
@@ -77,11 +78,11 @@ export async function GET(request: NextRequest) {
       countParams.push(userId)
     }
     if (startDate) {
-      countQuery += ` AND DATE("createdAt") >= $${countIdx++}::date`
+      countQuery += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${countIdx++}::date`
       countParams.push(startDate)
     }
     if (endDate) {
-      countQuery += ` AND DATE("createdAt") <= $${countIdx++}::date`
+      countQuery += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${countIdx++}::date`
       countParams.push(endDate)
     }
 
@@ -132,17 +133,17 @@ export async function DELETE(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Use DATE() to compare only date part - avoids timezone issues
+    // Use AT TIME ZONE 'Asia/Kolkata' to compare dates in IST
     let query = `DELETE FROM dsr_reports WHERE 1=1`
     const params: unknown[] = []
     let paramIdx = 1
 
     if (startDate) {
-      query += ` AND DATE("createdAt") >= $${paramIdx++}::date`
+      query += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${paramIdx++}::date`
       params.push(startDate)
     }
     if (endDate) {
-      query += ` AND DATE("createdAt") <= $${paramIdx++}::date`
+      query += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${paramIdx++}::date`
       params.push(endDate)
     }
     if (userId && userId !== "all") {
