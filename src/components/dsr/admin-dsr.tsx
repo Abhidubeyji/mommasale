@@ -204,12 +204,37 @@ export function AdminDsr() {
       return
     }
 
+    // Helper function to convert dd/mm/yyyy to yyyy-mm-dd
+    const formatDate = (dateStr: string): string => {
+      if (!dateStr) return ""
+      // If already in yyyy-mm-dd format, return as is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr
+      // If in dd/mm/yyyy format, convert
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        const [dd, mm, yyyy] = dateStr.split("/")
+        return `${yyyy}-${mm}-${dd}`
+      }
+      return dateStr
+    }
+
+    const startDateIso = formatDate(bulkDeleteStartDate)
+    const endDateIso = formatDate(bulkDeleteEndDate)
+
+    // Validate dates
+    if (bulkDeleteStartDate && !startDateIso) {
+      toast.error("Invalid Start Date format. Use dd/mm/yyyy")
+      return
+    }
+    if (bulkDeleteEndDate && !endDateIso) {
+      toast.error("Invalid End Date format. Use dd/mm/yyyy")
+      return
+    }
+
     setBulkDeleting(true)
     try {
       const params = new URLSearchParams()
-      if (bulkDeleteStartDate) params.set("startDate", bulkDeleteStartDate)
-      if (bulkDeleteEndDate) params.set("endDate", bulkDeleteEndDate)
-      // Also include current user filter
+      if (startDateIso) params.set("startDate", startDateIso)
+      if (endDateIso) params.set("endDate", endDateIso)
       if (userFilter !== "all") params.set("userId", userFilter)
 
       const res = await fetch(`/api/admin/dsr?${params.toString()}`, { method: "DELETE" })
@@ -542,23 +567,61 @@ export function AdminDsr() {
           </AlertDialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="bulkDeleteStartDate" className="text-sm">Start Date</Label>
+              <Label htmlFor="bulkDeleteStartDate" className="text-sm">Start Date (dd/mm/yyyy)</Label>
               <Input
                 id="bulkDeleteStartDate"
-                type="date"
+                type="text"
                 value={bulkDeleteStartDate}
-                onChange={(e) => setBulkDeleteStartDate(e.target.value)}
+                onChange={(e) => {
+                  // Allow only digits and /
+                  let val = e.target.value.replace(/[^\d/]/g, "")
+                  // Auto-format: insert / after 2 and 5 characters
+                  if (val.length === 2 && !val.includes("/")) val = val + "/"
+                  if (val.length === 5 && val.split("/").length === 2) val = val + "/"
+                  // Limit to 10 characters (dd/mm/yyyy)
+                  if (val.length > 10) val = val.slice(0, 10)
+                  setBulkDeleteStartDate(val)
+                }}
+                onBlur={() => {
+                  // Convert dd/mm/yyyy to yyyy-mm-dd for storage
+                  if (bulkDeleteStartDate && bulkDeleteStartDate.includes("/")) {
+                    const parts = bulkDeleteStartDate.split("/")
+                    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+                      const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
+                      setBulkDeleteStartDate(iso)
+                    }
+                  }
+                }}
+                placeholder="dd/mm/yyyy"
                 className="h-9"
+                maxLength={10}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="bulkDeleteEndDate" className="text-sm">End Date</Label>
+              <Label htmlFor="bulkDeleteEndDate" className="text-sm">End Date (dd/mm/yyyy)</Label>
               <Input
                 id="bulkDeleteEndDate"
-                type="date"
+                type="text"
                 value={bulkDeleteEndDate}
-                onChange={(e) => setBulkDeleteEndDate(e.target.value)}
+                onChange={(e) => {
+                  let val = e.target.value.replace(/[^\d/]/g, "")
+                  if (val.length === 2 && !val.includes("/")) val = val + "/"
+                  if (val.length === 5 && val.split("/").length === 2) val = val + "/"
+                  if (val.length > 10) val = val.slice(0, 10)
+                  setBulkDeleteEndDate(val)
+                }}
+                onBlur={() => {
+                  if (bulkDeleteEndDate && bulkDeleteEndDate.includes("/")) {
+                    const parts = bulkDeleteEndDate.split("/")
+                    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+                      const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
+                      setBulkDeleteEndDate(iso)
+                    }
+                  }
+                }}
+                placeholder="dd/mm/yyyy"
                 className="h-9"
+                maxLength={10}
               />
             </div>
           </div>
