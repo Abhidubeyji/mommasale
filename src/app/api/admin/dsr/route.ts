@@ -53,14 +53,14 @@ export async function GET(request: NextRequest) {
       query += ` AND d."userId" = $${paramIdx++}`
       params.push(userId)
     }
-    // Use AT TIME ZONE 'Asia/Kolkata' to compare dates in IST
-    // This ensures records created in India show on the correct date
+    // Convert UTC timestamp to IST by adding 5 hours 30 minutes, then extract date
+    // This ensures records created in India show on the correct date when filtered
     if (startDate) {
-      query += ` AND (d."createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${paramIdx++}::date`
+      query += ` AND (d."createdAt" + INTERVAL '5 hours 30 minutes')::date >= $${paramIdx++}::date`
       params.push(startDate)
     }
     if (endDate) {
-      query += ` AND (d."createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${paramIdx++}::date`
+      query += ` AND (d."createdAt" + INTERVAL '5 hours 30 minutes')::date <= $${paramIdx++}::date`
       params.push(endDate)
     }
 
@@ -78,11 +78,11 @@ export async function GET(request: NextRequest) {
       countParams.push(userId)
     }
     if (startDate) {
-      countQuery += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${countIdx++}::date`
+      countQuery += ` AND ("createdAt" + INTERVAL '5 hours 30 minutes')::date >= $${countIdx++}::date`
       countParams.push(startDate)
     }
     if (endDate) {
-      countQuery += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${countIdx++}::date`
+      countQuery += ` AND ("createdAt" + INTERVAL '5 hours 30 minutes')::date <= $${countIdx++}::date`
       countParams.push(endDate)
     }
 
@@ -133,17 +133,17 @@ export async function DELETE(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Use AT TIME ZONE 'Asia/Kolkata' to compare dates in IST
+    // Convert UTC timestamp to IST by adding 5 hours 30 minutes, then extract date
     let query = `DELETE FROM dsr_reports WHERE 1=1`
     const params: unknown[] = []
     let paramIdx = 1
 
     if (startDate) {
-      query += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date >= $${paramIdx++}::date`
+      query += ` AND ("createdAt" + INTERVAL '5 hours 30 minutes')::date >= $${paramIdx++}::date`
       params.push(startDate)
     }
     if (endDate) {
-      query += ` AND ("createdAt" AT TIME ZONE 'Asia/Kolkata')::date <= $${paramIdx++}::date`
+      query += ` AND ("createdAt" + INTERVAL '5 hours 30 minutes')::date <= $${paramIdx++}::date`
       params.push(endDate)
     }
     if (userId && userId !== "all") {
