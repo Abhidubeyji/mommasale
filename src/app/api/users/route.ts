@@ -17,24 +17,7 @@ export async function GET() {
     // Ensure the dsrEnabled column exists before querying
     await ensureDsrEnabledColumn()
 
-    const users = await db.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        canExport: true,
-        dsrEnabled: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: "desc" }
-    })
-
-    return NextResponse.json(users)
-  } catch (error) {
-    console.error("Get users error:", error)
-    // Fallback: try without dsrEnabled in case the column still doesn't exist
+    // Try fetching with dsrEnabled first
     try {
       const users = await db.user.findMany({
         select: {
@@ -44,15 +27,58 @@ export async function GET() {
           role: true,
           isActive: true,
           canExport: true,
+          dsrEnabled: true,
           createdAt: true
         },
         orderBy: { createdAt: "desc" }
-      }).then(us => us.map(u => ({ ...u, dsrEnabled: false })))
+      })
+
       return NextResponse.json(users)
-    } catch (err) {
-      console.error("Fallback get users error:", err)
-      return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    } catch (primaryError) {
+      console.error("Primary fetch with dsrEnabled failed, trying fallback:", primaryError)
+      // Try once more after ensuring column
+      await ensureDsrEnabledColumn()
+      
+      // Fallback: try without dsrEnabled in case the column still doesn't exist
+      try {
+        const users = await db.user.findMany({
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isActive: true,
+            canExport: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: "desc" }
+        })
+        const usersWithDsr = users.map(u => ({ ...u, dsrEnabled: false }))
+        return NextResponse.json(usersWithDsr)
+      } catch (fallbackErr) {
+        console.error("Fallback get users error:", fallbackErr)
+        // Last resort: use raw SQL
+        const rawUsers = await db.$queryRaw<Array<{
+          id: string
+          email: string | null
+          name: string
+          role: string
+          isActive: boolean
+          canExport: boolean
+          dsrEnabled: boolean
+          createdAt: Date
+        }>>`
+          SELECT id, email, name, role, "isActive", "canExport", 
+                 COALESCE("dsrEnabled", false) as "dsrEnabled", "createdAt" 
+          FROM "users" 
+          ORDER BY "createdAt" DESC;
+        `
+        return NextResponse.json(rawUsers)
+      }
     }
+  } catch (error) {
+    console.error("Get users error:", error)
+    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
   }
 }
 
@@ -86,17 +112,33 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await hash(password, 10)
 
-    const user = await db.user.create({
-      data: {
-        id,
-        name,
-        password: hashedPassword,
-        role,
-        isActive: true,
-        canExport: true,
-        dsrEnabled: false
-      }
-    })
+    let user
+    try {
+      user = await db.user.create({
+        data: {
+          id,
+          name,
+          password: hashedPassword,
+          role,
+          isActive: true,
+          canExport: true,
+          dsrEnabled: false
+        }
+      })
+    } catch (createError) {
+      console.error("Prisma create with dsrEnabled failed, trying without:", createError)
+      // Fallback: create without dsrEnabled
+      user = await db.user.create({
+        data: {
+          id,
+          name,
+          password: hashedPassword,
+          role,
+          isActive: true,
+          canExport: true
+        }
+      })
+    }
 
     return NextResponse.json({
       id: user.id,
@@ -104,7 +146,7 @@ export async function POST(request: NextRequest) {
       role: user.role,
       isActive: user.isActive,
       canExport: user.canExport,
-      dsrEnabled: user.dsrEnabled
+      dsrEnabled: (user as { dsrEnabled?: boolean }).dsrEnabled ?? false
     })
   } catch (error) {
     console.error("Create user error:", error)
@@ -141,18 +183,54 @@ export async function PUT(request: NextRequest) {
       updateData.password = await hash(password, 10)
     }
 
-    const user = await db.user.update({
-      where: { id },
-      data: updateData
-    })
+    let user
+    try {
+      user = await db.user.update({
+        where: { id },
+        data: updateData
+      })
+    } catch (updateError) {
+      console.error("Prisma update failed, trying raw SQL for dsrEnabled:", updateError)
+      // If Prisma fails (likely due to dsrEnabled column missing), 
+      // try updating without dsrEnabled first, then use raw SQL for dsrEnabled
+      const { dsrEnabled: _dsrVal, ...restData } = updateData
+      void _dsrVal
+      if (Object.keys(restData).length > 0) {
+        await db.user.update({
+          where: { id },
+          data: restData
+        })
+      }
+      // Now try raw SQL for dsrEnabled
+      if (dsrEnabled !== undefined) {
+        try {
+          await ensureDsrEnabledColumn()
+          await db.$executeRawUnsafe(`UPDATE "users" SET "dsrEnabled" = ${dsrEnabled ? 'TRUE' : 'FALSE'} WHERE "id" = $1;`, id)
+        } catch (e) {
+          console.error("Raw SQL update for dsrEnabled also failed:", e)
+        }
+      }
+      // Re-fetch the user
+      user = await db.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          isActive: true,
+          canExport: true,
+          dsrEnabled: true,
+        }
+      })
+    }
 
     return NextResponse.json({
-      id: user.id,
-      name: user.name,
-      role: user.role,
-      isActive: user.isActive,
-      canExport: user.canExport,
-      dsrEnabled: user.dsrEnabled
+      id: user?.id,
+      name: user?.name,
+      role: user?.role,
+      isActive: user?.isActive,
+      canExport: user?.canExport,
+      dsrEnabled: (user as { dsrEnabled?: boolean })?.dsrEnabled ?? false
     })
   } catch (error) {
     console.error("Update user error:", error)

@@ -36,14 +36,52 @@ export async function ensureDsrTable() {
 }
 
 /**
+ * Checks if the `dsrEnabled` column exists on the users table.
+ */
+async function columnExists(tableName: string, columnName: string): Promise<boolean> {
+  try {
+    const result = await db.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = ${tableName} 
+        AND column_name = ${columnName}
+      ) as exists;
+    `
+    return result[0]?.exists ?? false
+  } catch (error) {
+    console.error(`Failed to check if column ${columnName} exists:`, error)
+    return false
+  }
+}
+
+/**
  * Ensures the `dsrEnabled` column exists on the `users` table.
- * Safe to call multiple times - uses ADD COLUMN IF NOT EXISTS.
+ * Safe to call multiple times. Tries multiple approaches for compatibility.
  */
 export async function ensureDsrEnabledColumn() {
   try {
-    await db.$executeRawUnsafe(`
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "dsrEnabled" BOOLEAN NOT NULL DEFAULT false;
-    `)
+    // First check if column already exists
+    const exists = await columnExists("users", "dsrEnabled")
+    if (exists) return
+
+    // Try ADD COLUMN IF NOT EXISTS (PostgreSQL 9.6+)
+    try {
+      await db.$executeRawUnsafe(`
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "dsrEnabled" BOOLEAN NOT NULL DEFAULT false;
+      `)
+      return
+    } catch (err) {
+      console.error("ADD COLUMN IF NOT EXISTS failed, trying without IF NOT EXISTS:", err)
+    }
+
+    // Fallback: try without IF NOT EXISTS (will error if exists, but we already checked)
+    try {
+      await db.$executeRawUnsafe(`
+        ALTER TABLE "users" ADD COLUMN "dsrEnabled" BOOLEAN NOT NULL DEFAULT false;
+      `)
+    } catch (err) {
+      console.error("ADD COLUMN also failed (column may already exist):", err)
+    }
   } catch (error) {
     console.error("Failed to ensure dsrEnabled column:", error)
   }
