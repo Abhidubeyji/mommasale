@@ -23,48 +23,89 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "1000")
     const offset = parseInt(searchParams.get("offset") || "0")
 
-    // Build where clause
-    const where: Record<string, unknown> = {}
+    // Use raw SQL to fetch reports with user info
+    let query = `
+      SELECT 
+        d.id, 
+        d."serialNo", 
+        d."userId", 
+        d."counterName", 
+        d."mobileNo", 
+        d.address, 
+        d.remark, 
+        d.latitude, 
+        d.longitude, 
+        d."locationText", 
+        d."createdAt",
+        json_build_object(
+          'id', u.id,
+          'name', u.name,
+          'role', u.role
+        ) as user
+      FROM dsr_reports d
+      LEFT JOIN users u ON d."userId" = u.id
+      WHERE 1=1
+    `
+    const params: unknown[] = []
+    let paramIdx = 1
+
     if (userId && userId !== "all") {
-      where.userId = userId
+      query += ` AND d."userId" = $${paramIdx++}`
+      params.push(userId)
     }
-    if (startDate || endDate) {
-      const dateFilter: Record<string, Date> = {}
-      if (startDate) dateFilter.gte = new Date(startDate)
-      if (endDate) {
-        const end = new Date(endDate)
-        end.setHours(23, 59, 59, 999)
-        dateFilter.lte = end
-      }
-      where.createdAt = dateFilter
+    if (startDate) {
+      query += ` AND d."createdAt" >= $${paramIdx++}`
+      params.push(new Date(startDate))
+    }
+    if (endDate) {
+      const end = new Date(endDate)
+      end.setHours(23, 59, 59, 999)
+      query += ` AND d."createdAt" <= $${paramIdx++}`
+      params.push(end)
     }
 
-    const reports = await db.dsr.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            role: true
-          }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      skip: offset,
-    })
+    query += ` ORDER BY d."createdAt" DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`
+    params.push(limit, offset)
 
-    const total = await db.dsr.count({ where })
+    const reports = await db.$queryRawUnsafe(query, ...params)
 
-    return NextResponse.json({ reports, total })
+    // Get total count
+    let countQuery = `SELECT COUNT(*) as count FROM dsr_reports WHERE 1=1`
+    const countParams: unknown[] = []
+    let countIdx = 1
+    if (userId && userId !== "all") {
+      countQuery += ` AND "userId" = $${countIdx++}`
+      countParams.push(userId)
+    }
+    if (startDate) {
+      countQuery += ` AND "createdAt" >= $${countIdx++}`
+      countParams.push(new Date(startDate))
+    }
+    if (endDate) {
+      const end = new Date(endDate)
+      end.setHours(23, 59, 59, 999)
+      countQuery += ` AND "createdAt" <= $${countIdx++}`
+      countParams.push(end)
+    }
+
+    const totalResult = await db.$queryRawUnsafe(countQuery, ...countParams)
+    const total = Number((totalResult as Array<{ count: bigint }>)[0]?.count || 0)
+
+    // Serialize dates
+    const serializedReports = (reports as Array<{ createdAt: Date }>).map(r => ({
+      ...r,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt
+    }))
+
+    return NextResponse.json({ reports: serializedReports, total })
   } catch (error) {
     console.error("Get admin DSR error:", error)
-    return NextResponse.json({ error: "Failed to fetch DSR reports" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch DSR reports", details: String(error) }, { status: 500 })
   }
 }
 
-// DELETE - Delete a DSR report (Admin only)
+// DELETE - Delete DSR report(s) (Admin only)
+// Supports: single delete (?id=xxx) OR bulk delete by date range (?startDate=xxx&endDate=xxx)
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -77,16 +118,54 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
+    const startDate = searchParams.get("startDate")
+    const endDate = searchParams.get("endDate")
+    const userId = searchParams.get("userId")
 
-    if (!id) {
-      return NextResponse.json({ error: "DSR ID required" }, { status: 400 })
+    // Single report delete
+    if (id) {
+      await db.$executeRawUnsafe(`DELETE FROM dsr_reports WHERE id = $1;`, id)
+      return NextResponse.json({ message: "DSR report deleted successfully", id })
     }
 
-    await db.dsr.delete({ where: { id } })
+    // Bulk delete by date range (and optional userId filter)
+    if (!startDate && !endDate) {
+      return NextResponse.json({ 
+        error: "Either 'id' parameter OR 'startDate'/'endDate' parameters required" 
+      }, { status: 400 })
+    }
 
-    return NextResponse.json({ message: "DSR report deleted successfully", id })
+    let query = `DELETE FROM dsr_reports WHERE 1=1`
+    const params: unknown[] = []
+    let paramIdx = 1
+
+    if (startDate) {
+      query += ` AND "createdAt" >= $${paramIdx++}`
+      params.push(new Date(startDate))
+    }
+    if (endDate) {
+      const end = new Date(endDate)
+      end.setHours(23, 59, 59, 999)
+      query += ` AND "createdAt" <= $${paramIdx++}`
+      params.push(end)
+    }
+    if (userId && userId !== "all") {
+      query += ` AND "userId" = $${paramIdx++}`
+      params.push(userId)
+    }
+
+    const deletedCount = await db.$executeRawUnsafe(query, ...params)
+
+    return NextResponse.json({ 
+      message: `Deleted ${deletedCount} DSR report(s) successfully`,
+      deletedCount,
+      filters: { startDate, endDate, userId }
+    })
   } catch (error) {
     console.error("Delete DSR error:", error)
-    return NextResponse.json({ error: "Failed to delete DSR report" }, { status: 500 })
+    return NextResponse.json({ 
+      error: "Failed to delete DSR report(s)", 
+      details: String(error) 
+    }, { status: 500 })
   }
 }

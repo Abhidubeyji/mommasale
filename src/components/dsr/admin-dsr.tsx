@@ -33,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ClipboardList, Download, Trash2, MapPin, Search } from "lucide-react"
+import { ClipboardList, Download, Trash2, MapPin, Search, CalendarX } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import * as XLSX from "xlsx"
@@ -75,6 +75,10 @@ export function AdminDsr() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [reportToDelete, setReportToDelete] = useState<DsrReport | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  const [bulkDeleteStartDate, setBulkDeleteStartDate] = useState("")
+  const [bulkDeleteEndDate, setBulkDeleteEndDate] = useState("")
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     fetchUsers()
@@ -187,6 +191,46 @@ export function AdminDsr() {
     setDeleteDialogOpen(true)
   }
 
+  const handleBulkDeleteClick = () => {
+    // Pre-fill with current filter dates
+    setBulkDeleteStartDate(startDate)
+    setBulkDeleteEndDate(endDate)
+    setBulkDeleteDialogOpen(true)
+  }
+
+  const handleBulkDeleteConfirm = async () => {
+    if (!bulkDeleteStartDate && !bulkDeleteEndDate) {
+      toast.error("Please select at least one date (start or end)")
+      return
+    }
+
+    setBulkDeleting(true)
+    try {
+      const params = new URLSearchParams()
+      if (bulkDeleteStartDate) params.set("startDate", bulkDeleteStartDate)
+      if (bulkDeleteEndDate) params.set("endDate", bulkDeleteEndDate)
+      // Also include current user filter
+      if (userFilter !== "all") params.set("userId", userFilter)
+
+      const res = await fetch(`/api/admin/dsr?${params.toString()}`, { method: "DELETE" })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message || "Reports deleted successfully")
+        fetchReports()
+        setBulkDeleteDialogOpen(false)
+        setBulkDeleteStartDate("")
+        setBulkDeleteEndDate("")
+      } else {
+        const data = await res.json()
+        toast.error(data.error || "Failed to delete reports")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const handleDeleteConfirm = async () => {
     if (!reportToDelete) return
 
@@ -240,14 +284,25 @@ export function AdminDsr() {
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground">View all sales DSR reports with location</p>
         </div>
-        <Button
-          onClick={handleExport}
-          disabled={exporting || reports.length === 0}
-          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-        >
-          <Download className="mr-2 h-4 w-4" />
-          {exporting ? "Exporting..." : "Export to Excel"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleBulkDeleteClick}
+            disabled={reports.length === 0}
+            variant="outline"
+            className="border-red-500 text-red-500 hover:bg-red-50"
+          >
+            <CalendarX className="mr-2 h-4 w-4" />
+            Delete by Date
+          </Button>
+          <Button
+            onClick={handleExport}
+            disabled={exporting || reports.length === 0}
+            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {exporting ? "Exporting..." : "Export to Excel"}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -463,6 +518,61 @@ export function AdminDsr() {
               className="bg-red-500 hover:bg-red-600"
             >
               {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete by Date Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete DSR Reports by Date Range</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a date range to delete multiple DSR reports at once. 
+              {userFilter !== "all" && (
+                <span className="block mt-1 text-orange-600 font-medium">
+                  Note: Only reports from the currently filtered sales person will be deleted.
+                </span>
+              )}
+              <span className="block mt-1 font-semibold text-red-600">
+                This action cannot be undone!
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="bulkDeleteStartDate" className="text-sm">Start Date</Label>
+              <Input
+                id="bulkDeleteStartDate"
+                type="date"
+                value={bulkDeleteStartDate}
+                onChange={(e) => setBulkDeleteStartDate(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bulkDeleteEndDate" className="text-sm">End Date</Label>
+              <Input
+                id="bulkDeleteEndDate"
+                type="date"
+                value={bulkDeleteEndDate}
+                onChange={(e) => setBulkDeleteEndDate(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          </div>
+          {(!bulkDeleteStartDate && !bulkDeleteEndDate) && (
+            <p className="text-xs text-red-500">Please select at least one date</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteConfirm}
+              disabled={bulkDeleting || (!bulkDeleteStartDate && !bulkDeleteEndDate)}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {bulkDeleting ? "Deleting..." : "Delete All Reports"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
