@@ -140,7 +140,7 @@ export function AdminDsr() {
 
       const excelData = filteredForExport.map((report, idx) => ({
         "S.No": idx + 1,
-        "Date": format(new Date(report.createdAt), "dd MMM yyyy"),
+        "Date": format(new Date(report.createdAt), "dd/MM/yyyy"),
         "Time": format(new Date(report.createdAt), "hh:mm:ss a"),
         "Sales Person": report.user.name,
         "Counter Name": report.counterName,
@@ -392,7 +392,7 @@ export function AdminDsr() {
                       <TableRow key={report.id}>
                         <TableCell className="font-medium">#{report.serialNo}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {format(new Date(report.createdAt), "dd MMM yyyy")}
+                          {format(new Date(report.createdAt), "dd/MM/yyyy")}
                           <br />
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(report.createdAt), "hh:mm a")}
@@ -449,7 +449,7 @@ export function AdminDsr() {
                           <p className="font-medium truncate">{report.counterName}</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {report.user.name} • {format(new Date(report.createdAt), "dd MMM, hh:mm a")}
+                          {report.user.name} • {format(new Date(report.createdAt), "dd/MM/yyyy, hh:mm a")}
                         </p>
                       </div>
                       <Button
