@@ -101,6 +101,14 @@ export function DsrForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Validate mobile number - exactly 10 digits
+    const mobileDigits = formData.mobileNo.replace(/\D/g, "")
+    if (mobileDigits.length !== 10) {
+      toast.error("Mobile No must be exactly 10 digits")
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -133,7 +141,7 @@ export function DsrForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           counterName: formData.counterName,
-          mobileNo: formData.mobileNo,
+          mobileNo: mobileDigits,
           address: formData.address,
           remark: formData.remark,
           latitude: locationToSend.latitude,
@@ -225,15 +233,27 @@ export function DsrForm() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="mobileNo">Mobile No *</Label>
+                <Label htmlFor="mobileNo">Mobile No * (10 digits)</Label>
                 <Input
                   id="mobileNo"
                   value={formData.mobileNo}
-                  onChange={(e) => setFormData({ ...formData, mobileNo: e.target.value.replace(/[^0-9+\-\s]/g, "") })}
-                  placeholder="Enter mobile number"
+                  onChange={(e) => {
+                    // Only allow digits, max 10
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10)
+                    setFormData({ ...formData, mobileNo: digits })
+                  }}
+                  placeholder="Enter 10 digit mobile number"
                   required
-                  inputMode="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
+                  title="Mobile number must be exactly 10 digits"
                 />
+                {formData.mobileNo.length > 0 && formData.mobileNo.length !== 10 && (
+                  <p className="text-xs text-red-500">
+                    {formData.mobileNo.length}/10 digits - must be exactly 10 digits
+                  </p>
+                )}
               </div>
             </div>
             <div className="grid gap-2">
