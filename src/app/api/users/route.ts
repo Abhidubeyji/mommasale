@@ -14,6 +14,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Ensure the dsrEnabled column exists before querying
     await ensureDsrEnabledColumn()
 
     // Get users with dsrEnabled (try with column, fallback without)
@@ -46,6 +47,7 @@ export async function GET() {
       console.error("Primary fetch with dsrEnabled failed, trying fallback:", primaryErr)
       await ensureDsrEnabledColumn()
       
+      // Fallback: fetch without dsrEnabled, set to false
       const usersRaw = await db.user.findMany({
         select: {
           id: true,
@@ -74,11 +76,13 @@ export async function GET() {
       console.log("Could not fetch last logins:", e)
     }
 
+    // Create a map of userId to lastLogin
     const lastLoginMap = new Map<string, Date>()
     lastLogins.forEach((item) => {
       lastLoginMap.set(item.userId, item.lastLogin)
     })
 
+    // Add lastLogin to each user
     const usersWithLastLogin = users.map(user => ({
       ...user,
       createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
@@ -165,6 +169,8 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
+    console.log("PUT /api/users - update request:", { id, name, role, isActive, canExport, dsrEnabled, hasPassword: !!password })
+
     await ensureDsrEnabledColumn()
 
     // STEP 1: Update non-dsrEnabled fields using Prisma
@@ -183,23 +189,25 @@ export async function PUT(request: NextRequest) {
           where: { id },
           data: prismaUpdateData
         })
+        console.log("Prisma update succeeded for:", id)
       } catch (prismaErr) {
         console.error("Prisma update failed:", prismaErr)
       }
     }
 
-    // STEP 2: Update dsrEnabled using RAW SQL
+    // STEP 2: Update dsrEnabled using RAW SQL (always - most reliable)
     if (dsrEnabled !== undefined) {
       try {
         await ensureDsrEnabledColumn()
+        
         const result = await db.$executeRawUnsafe(
           `UPDATE "users" SET "dsrEnabled" = $1 WHERE "id" = $2;`,
           dsrEnabled === true,
           id
         )
-        console.log(`Raw SQL update for dsrEnabled=${dsrEnabled} succeeded, rows: ${result}`)
+        console.log(`Raw SQL update for dsrEnabled=${dsrEnabled} succeeded for user ${id}, rows affected: ${result}`)
       } catch (rawErr) {
-        console.error("Raw SQL update failed:", rawErr)
+        console.error("Raw SQL update for dsrEnabled failed:", rawErr)
         return NextResponse.json({ 
           error: "Failed to update DSR status", 
           details: String(rawErr) 
@@ -207,7 +215,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // STEP 3: Fetch updated user using raw SQL
+    // STEP 3: Fetch updated user using raw SQL to confirm
     const updatedUser = await db.$queryRaw<Array<{
       id: string
       name: string
@@ -216,14 +224,22 @@ export async function PUT(request: NextRequest) {
       canExport: boolean
       dsrEnabled: boolean
     }>>`
-      SELECT id, name, role, "isActive", "canExport", 
-             COALESCE("dsrEnabled", false) as "dsrEnabled"
-      FROM "users" WHERE "id" = ${id};
+      SELECT 
+        id, 
+        name, 
+        role, 
+        "isActive", 
+        "canExport", 
+        COALESCE("dsrEnabled", false) as "dsrEnabled"
+      FROM "users" 
+      WHERE "id" = ${id};
     `
 
     if (updatedUser.length === 0) {
       return NextResponse.json({ error: "User not found after update" }, { status: 404 })
     }
+
+    console.log("Final user state:", updatedUser[0])
 
     return NextResponse.json({
       id: updatedUser[0].id,
