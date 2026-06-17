@@ -88,21 +88,17 @@ export function AdminDsr() {
     fetchUsers()
   }, [])
 
-  useEffect(() => {
-    fetchReports()
-  }, [userFilter, startDate, endDate])
-
-  // Keep a ref to the latest fetchReports so the interval always calls the latest version
-  const fetchReportsRef = useRef(fetchReports)
-  fetchReportsRef.current = fetchReports
-
   // Auto-refresh every 15 seconds - uses ref so always calls latest function
+  // Ref is initialized as null, set after fetchReports is defined
+  const fetchReportsRef = useRef<((isRefresh?: boolean) => Promise<void>) | null>(null)
+
   useEffect(() => {
+    if (!fetchReportsRef.current) return
     const interval = setInterval(() => {
-      fetchReportsRef.current(true)
+      fetchReportsRef.current?.(true)
     }, 15000) // 15 seconds
     return () => clearInterval(interval)
-  }, []) // Empty deps - interval set only once
+  }, [])
 
   const fetchUsers = async () => {
     try {
@@ -157,6 +153,14 @@ export function AdminDsr() {
       setRefreshing(false)
     }
   }
+
+  // Keep a ref to the latest fetchReports so the interval always calls the latest version
+  fetchReportsRef.current = fetchReports
+
+  // Fetch reports when filters change
+  useEffect(() => {
+    fetchReports()
+  }, [userFilter, startDate, endDate])
 
   const handleExport = async () => {
     setExporting(true)
