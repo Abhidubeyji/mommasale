@@ -64,33 +64,31 @@ export async function GET() {
     }
 
     // Get last login for each user using raw query
-    let lastLogins: Array<{ userId: string; lastLogin: Date }> = []
+    let lastLogins: Array<{ userId: string; lastLogin: Date | string }> = []
     try {
       lastLogins = await db.$queryRaw`
         SELECT "userId", MAX("loginTime") as "lastLogin"
         FROM login_logs
         WHERE success = true
         GROUP BY "userId"
-      ` as Array<{ userId: string; lastLogin: Date }>
+      ` as Array<{ userId: string; lastLogin: Date | string }>
     } catch (e) {
       console.log("Could not fetch last logins:", e)
     }
 
-    // Create a map of userId to lastLogin
-    const lastLoginMap = new Map<string, Date>()
+    // Create a map of userId to lastLogin (serialized to ISO string)
+    const lastLoginMap = new Map<string, string>()
     lastLogins.forEach((item) => {
-      lastLoginMap.set(item.userId, item.lastLogin)
+      const loginTime = item.lastLogin
+      const isoString = loginTime instanceof Date ? loginTime.toISOString() : String(loginTime)
+      lastLoginMap.set(item.userId, isoString)
     })
 
     // Add lastLogin to each user
     const usersWithLastLogin = users.map(user => ({
       ...user,
       createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
-      lastLogin: lastLoginMap.get(user.id) 
-        ? (lastLoginMap.get(user.id) instanceof Date 
-            ? (lastLoginMap.get(user.id) as Date).toISOString() 
-            : lastLoginMap.get(user.id))
-        : null
+      lastLogin: lastLoginMap.get(user.id) || null
     }))
 
     return NextResponse.json(usersWithLastLogin)

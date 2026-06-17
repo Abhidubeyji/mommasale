@@ -42,8 +42,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX, ClipboardList } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX, ClipboardList, Clock } from "lucide-react"
 import { toast } from "sonner"
+import { format } from "date-fns"
 
 interface User {
   id: string
@@ -54,6 +55,7 @@ interface User {
   canExport: boolean
   dsrEnabled: boolean
   createdAt: string
+  lastLogin: string | null
 }
 
 const initialFormState = {
@@ -391,13 +393,14 @@ export function UserManagement() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <Table className="min-w-[700px]">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Full Name</TableHead>
                   <TableHead className="whitespace-nowrap">User Name</TableHead>
                   <TableHead className="whitespace-nowrap hidden sm:table-cell">Role</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap hidden md:table-cell">Last Login</TableHead>
                   <TableHead className="whitespace-nowrap hidden md:table-cell">Export</TableHead>
                   <TableHead className="whitespace-nowrap hidden md:table-cell">DSR</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Action</TableHead>
@@ -417,6 +420,22 @@ export function UserManagement() {
                       <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}>
                         {user.isActive ? "Active" : "Inactive"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell whitespace-nowrap text-sm">
+                      {user.lastLogin ? (
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {format(new Date(user.lastLogin), "dd MMM yyyy")}
+                            <br />
+                            <span className="text-xs">
+                              {format(new Date(user.lastLogin), "hh:mm a")}
+                            </span>
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Never</span>
+                      )}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <Badge variant={user.canExport ? "default" : "secondary"} className={user.canExport ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" : ""}>
@@ -493,7 +512,7 @@ export function UserManagement() {
                 ))}
                 {users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No users found
                     </TableCell>
                   </TableRow>
