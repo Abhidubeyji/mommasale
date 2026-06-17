@@ -3,62 +3,21 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { db } from "@/lib/db"
 import { compare } from "bcrypt"
 import { randomUUID } from "crypto"
+import { ensureDsrEnabledColumn } from "@/lib/dsr-db"
 
-// Helper function to create login log using raw SQL
+// Helper function to create login log
 async function createLoginLog(userId: string, success: boolean) {
   try {
-    const id = randomUUID()
-    const loginTime = new Date().toISOString()
-    
-    // Try to create table first
-    try {
-      await db.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS login_logs (
-          id TEXT PRIMARY KEY,
-          "userId" TEXT NOT NULL,
-          "loginTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "ipAddress" TEXT,
-          "userAgent" TEXT,
-          success BOOLEAN NOT NULL DEFAULT true
-        )
-      `)
-    } catch (e) {
-      // Table might exist
-    }
-
-    // Insert login log
-    await db.$executeRawUnsafe(`
-      INSERT INTO login_logs (id, "userId", "loginTime", success)
-      VALUES ('${id}', '${userId}', '${loginTime}', ${success})
-    `)
-    
-    console.log("Login log created for user:", userId, "success:", success)
+    await db.loginLog.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        success,
+        loginTime: new Date()
+      }
+    })
   } catch (error) {
     console.error("Failed to create login log:", error)
-  }
-}
-
-declare module "next-auth" {
-  interface User {
-    role?: string
-    canExport?: boolean
-  }
-  interface Session {
-    user: {
-      id: string
-      email?: string | null
-      name?: string | null
-      role: string
-      canExport: boolean
-    }
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    id: string
-    role: string
-    canExport: boolean
   }
 }
 
@@ -73,7 +32,10 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        console.log("Authorize called with:", { userId: credentials?.userId })
+        
         if (!credentials?.userId || !credentials?.password) {
+          console.log("Missing credentials")
           return null
         }
 
@@ -81,7 +43,11 @@ export const authOptions: NextAuthOptions = {
           where: { id: credentials.userId }
         })
 
+        console.log("User found:", user ? { id: user.id, name: user.name, role: user.role, isActive: user.isActive } : null)
+
         if (!user || !user.isActive) {
+          console.log("User not found or inactive")
+          // Log failed attempt if user exists but is inactive
           if (user && !user.isActive) {
             await createLoginLog(user.id, false)
           }
@@ -89,21 +55,39 @@ export const authOptions: NextAuthOptions = {
         }
 
         const passwordMatch = await compare(credentials.password, user.password)
+        console.log("Password match:", passwordMatch)
 
         if (!passwordMatch) {
+          console.log("Password mismatch")
+          // Log failed login attempt
           await createLoginLog(user.id, false)
           return null
         }
 
         // Log successful login
         await createLoginLog(user.id, true)
+        console.log("Login successful for user:", user.id)
+        
+        // Ensure dsrEnabled column exists, then read its value
+        let dsrEnabled = false
+        try {
+          await ensureDsrEnabledColumn()
+          const freshUser = await db.user.findUnique({
+            where: { id: user.id },
+            select: { dsrEnabled: true }
+          })
+          dsrEnabled = freshUser?.dsrEnabled ?? false
+        } catch (e) {
+          console.error("Failed to read dsrEnabled:", e)
+        }
         
         return {
           id: user.id,
           email: user.email || undefined,
           name: user.name,
           role: user.role,
-          canExport: user.canExport
+          canExport: user.canExport,
+          dsrEnabled
         }
       }
     })
@@ -114,6 +98,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id
         token.role = user.role
         token.canExport = user.canExport
+        token.dsrEnabled = (user as { dsrEnabled?: boolean }).dsrEnabled ?? false
       }
       return token
     },
@@ -122,6 +107,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string
         session.user.role = token.role as string
         session.user.canExport = token.canExport as boolean
+        ;(session.user as unknown as { dsrEnabled: boolean }).dsrEnabled = token.dsrEnabled as boolean
       }
       return session
     }
@@ -144,4 +130,5 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET || "mom-masale-secret-key-2024-super-secure",
+  debug: process.env.NODE_ENV === 'development'
 }

@@ -3,8 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { hash } from "bcrypt"
+import { ensureDsrEnabledColumn } from "@/lib/dsr-db"
 
-// GET - List all users with last login (Admin only)
+// GET - List all users (Admin only)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -13,7 +14,9 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get users
+    // Ensure the dsrEnabled column exists before querying
+    await ensureDsrEnabledColumn()
+
     const users = await db.user.findMany({
       select: {
         id: true,
@@ -22,40 +25,34 @@ export async function GET() {
         role: true,
         isActive: true,
         canExport: true,
+        dsrEnabled: true,
         createdAt: true
       },
       orderBy: { createdAt: "desc" }
     })
 
-    // Get last login for each user using raw query
-    let lastLogins: Array<{ userId: string; lastLogin: Date }> = []
-    try {
-      lastLogins = await db.$queryRaw`
-        SELECT "userId", MAX("loginTime") as "lastLogin"
-        FROM login_logs
-        WHERE success = true
-        GROUP BY "userId"
-      ` as Array<{ userId: string; lastLogin: Date }>
-    } catch (e) {
-      console.log("Could not fetch last logins:", e)
-    }
-
-    // Create a map of userId to lastLogin
-    const lastLoginMap = new Map<string, Date>()
-    lastLogins.forEach((item) => {
-      lastLoginMap.set(item.userId, item.lastLogin)
-    })
-
-    // Add lastLogin to each user
-    const usersWithLastLogin = users.map(user => ({
-      ...user,
-      lastLogin: lastLoginMap.get(user.id) || null
-    }))
-
-    return NextResponse.json(usersWithLastLogin)
+    return NextResponse.json(users)
   } catch (error) {
     console.error("Get users error:", error)
-    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    // Fallback: try without dsrEnabled in case the column still doesn't exist
+    try {
+      const users = await db.user.findMany({
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          canExport: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: "desc" }
+      }).then(us => us.map(u => ({ ...u, dsrEnabled: false })))
+      return NextResponse.json(users)
+    } catch (err) {
+      console.error("Fallback get users error:", err)
+      return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    }
   }
 }
 
@@ -68,6 +65,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Ensure the dsrEnabled column exists before creating
+    await ensureDsrEnabledColumn()
+
     const body = await request.json()
     const { id, name, password, role } = body
 
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User Name, Full Name, Password and Role are required" }, { status: 400 })
     }
 
+    // Check if user ID already exists
     const existingUser = await db.user.findUnique({
       where: { id }
     })
@@ -92,7 +93,8 @@ export async function POST(request: NextRequest) {
         password: hashedPassword,
         role,
         isActive: true,
-        canExport: true
+        canExport: true,
+        dsrEnabled: false
       }
     })
 
@@ -101,7 +103,8 @@ export async function POST(request: NextRequest) {
       name: user.name,
       role: user.role,
       isActive: user.isActive,
-      canExport: user.canExport
+      canExport: user.canExport,
+      dsrEnabled: user.dsrEnabled
     })
   } catch (error) {
     console.error("Create user error:", error)
@@ -118,8 +121,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Ensure the dsrEnabled column exists before updating
+    await ensureDsrEnabledColumn()
+
     const body = await request.json()
-    const { id, name, role, isActive, canExport, password } = body
+    const { id, name, role, isActive, canExport, dsrEnabled, password } = body
 
     if (!id) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
@@ -130,6 +136,7 @@ export async function PUT(request: NextRequest) {
     if (role !== undefined) updateData.role = role
     if (isActive !== undefined) updateData.isActive = isActive
     if (canExport !== undefined) updateData.canExport = canExport
+    if (dsrEnabled !== undefined) updateData.dsrEnabled = dsrEnabled
     if (password) {
       updateData.password = await hash(password, 10)
     }
@@ -144,7 +151,8 @@ export async function PUT(request: NextRequest) {
       name: user.name,
       role: user.role,
       isActive: user.isActive,
-      canExport: user.canExport
+      canExport: user.canExport,
+      dsrEnabled: user.dsrEnabled
     })
   } catch (error) {
     console.error("Update user error:", error)
@@ -168,10 +176,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
+    // Prevent deleting self
     if (id === session.user.id) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
     }
 
+    // Check if user exists
     const user = await db.user.findUnique({
       where: { id }
     })
@@ -180,6 +190,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
+    // Delete user (this will cascade delete related data based on schema)
     await db.user.delete({
       where: { id }
     })

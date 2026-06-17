@@ -20,7 +20,8 @@ import {
   Menu,
   LogOut,
   History,
-  Database
+  Database,
+  ClipboardList
 } from "lucide-react"
 
 interface NavItem {
@@ -38,6 +39,8 @@ const navItems: NavItem[] = [
   { id: "shopkeepers", label: "Shopkeepers", icon: <Store className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
   { id: "orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
   { id: "payments", label: "Payments", icon: <CreditCard className="h-5 w-5" />, roles: ["ADMIN", "SALES"] },
+  { id: "dsr", label: "My DSR", icon: <ClipboardList className="h-5 w-5" />, roles: ["SALES"] },
+  { id: "adminDsr", label: "DSR Reports", icon: <ClipboardList className="h-5 w-5" />, roles: ["ADMIN"] },
   { id: "loginLogs", label: "Login Logs", icon: <History className="h-5 w-5" />, roles: ["ADMIN"] },
   { id: "backup", label: "Backup/Restore", icon: <Database className="h-5 w-5" />, roles: ["ADMIN"] },
 ]

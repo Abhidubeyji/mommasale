@@ -156,6 +156,7 @@ model User {
   role        String        @default("SALES")
   isActive    Boolean       @default(true)
   canExport   Boolean       @default(true)
+  dsrEnabled  Boolean       @default(false)  // Whether DSR (Daily Sales Report) is enabled for this user
   fcmToken    String?       // Firebase Cloud Messaging token for push notifications
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -163,6 +164,7 @@ model User {
   payments    Payment[]
   shopkeepers Shopkeeper[]
   loginLogs   LoginLog[]
+  dsrReports  Dsr[]
 
   @@map("users")
 }
@@ -179,4 +181,23 @@ model LoginLog {
   @@index([userId])
   @@index([loginTime])
   @@map("login_logs")
+}
+
+model Dsr {
+  id           String   @id
+  serialNo     Int      @default(1)  // Auto-incrementing serial number per user
+  userId       String
+  counterName  String
+  mobileNo     String
+  address      String?
+  remark       String?
+  latitude     Float?   // Captured location (hidden from sales user)
+  longitude    Float?   // Captured location (hidden from sales user)
+  locationText String?  // Human-readable location (optional, for export)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("dsr_reports")
 }

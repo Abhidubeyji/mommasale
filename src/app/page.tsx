@@ -14,6 +14,8 @@ import { OrderManagement } from "@/components/orders/order-management"
 import { PaymentManagement } from "@/components/payments/payment-management"
 import { LoginLogs } from "@/components/logs/login-logs"
 import { BackupRestore } from "@/components/backup/backup-restore"
+import { DsrForm } from "@/components/dsr/dsr-form"
+import { AdminDsr } from "@/components/dsr/admin-dsr"
 
 function LoadingScreen() {
   return (
@@ -55,6 +57,10 @@ export default function Home() {
         return session.user.role !== "VIEWER" ? <OrderManagement /> : <DashboardContent />
       case "payments":
         return session.user.role !== "VIEWER" ? <PaymentManagement /> : <DashboardContent />
+      case "dsr":
+        return session.user.role === "SALES" ? <DsrForm /> : <DashboardContent />
+      case "adminDsr":
+        return session.user.role === "ADMIN" ? <AdminDsr /> : <DashboardContent />
       case "loginLogs":
         return session.user.role === "ADMIN" ? <LoginLogs /> : <DashboardContent />
       case "backup":

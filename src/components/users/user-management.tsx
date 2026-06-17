@@ -42,9 +42,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX, Clock } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, UserCheck, UserX, Download, FileX, ClipboardList } from "lucide-react"
 import { toast } from "sonner"
-import { format } from "date-fns"
 
 interface User {
   id: string
@@ -53,8 +52,8 @@ interface User {
   role: string
   isActive: boolean
   canExport: boolean
+  dsrEnabled: boolean
   createdAt: string
-  lastLogin: string | null
 }
 
 const initialFormState = {
@@ -99,6 +98,7 @@ export function UserManagement() {
 
     try {
       if (editingUser) {
+        // Update existing user
         const updateData: Record<string, unknown> = {
           id: editingUser.id,
           name: formData.name,
@@ -123,6 +123,7 @@ export function UserManagement() {
           toast.error(data.error || "Failed to update user")
         }
       } else {
+        // Create new user
         if (!formData.id) {
           toast.error("User Name is required")
           setSaving(false)
@@ -243,21 +244,35 @@ export function UserManagement() {
     }
   }
 
+  const handleToggleDsr = async (user: User) => {
+    try {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: user.id,
+          dsrEnabled: !user.dsrEnabled
+        })
+      })
+
+      if (res.ok) {
+        toast.success(`DSR ${user.dsrEnabled ? "disabled" : "enabled"} for ${user.name}`)
+        fetchUsers()
+      } else {
+        const data = await res.json()
+        toast.error(data.error || "Failed to update user")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
+    }
+  }
+
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "ADMIN": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       case "SALES": return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
       case "VIEWER": return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
       default: return ""
-    }
-  }
-
-  const formatLastLogin = (lastLogin: string | null) => {
-    if (!lastLogin) return "Never"
-    try {
-      return format(new Date(lastLogin), "dd/MM/yyyy HH:mm")
-    } catch {
-      return "Never"
     }
   }
 
@@ -383,8 +398,8 @@ export function UserManagement() {
                   <TableHead className="whitespace-nowrap">User Name</TableHead>
                   <TableHead className="whitespace-nowrap hidden sm:table-cell">Role</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
-                  <TableHead className="whitespace-nowrap hidden md:table-cell">Last Login</TableHead>
-                  <TableHead className="whitespace-nowrap hidden lg:table-cell">Export</TableHead>
+                  <TableHead className="whitespace-nowrap hidden md:table-cell">Export</TableHead>
+                  <TableHead className="whitespace-nowrap hidden md:table-cell">DSR</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -403,15 +418,14 @@ export function UserManagement() {
                         {user.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap hidden md:table-cell">
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {formatLastLogin(user.lastLogin)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell className="hidden md:table-cell">
                       <Badge variant={user.canExport ? "default" : "secondary"} className={user.canExport ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" : ""}>
                         {user.canExport ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <Badge variant={user.dsrEnabled ? "default" : "secondary"} className={user.dsrEnabled ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" : ""}>
+                        {user.dsrEnabled ? "Enabled" : "Disabled"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
@@ -438,6 +452,16 @@ export function UserManagement() {
                           ) : (
                             <FileX className="h-4 w-4 text-gray-400" />
                           )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleToggleDsr(user)}
+                          disabled={user.role !== "SALES"}
+                          className="hover:bg-purple-100 dark:hover:bg-gray-800"
+                          title={user.role === "SALES" ? (user.dsrEnabled ? "Disable DSR" : "Enable DSR") : "DSR only for Sales users"}
+                        >
+                          <ClipboardList className={user.dsrEnabled ? "h-4 w-4 text-purple-500" : "h-4 w-4 text-gray-400"} />
                         </Button>
                         <Button
                           variant="ghost"
