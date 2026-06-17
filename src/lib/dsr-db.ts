@@ -1,6 +1,35 @@
 import { db } from "@/lib/db"
 
 /**
+ * Ensures the `login_logs` table exists in the database.
+ * Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
+ */
+export async function ensureLoginLogsTable() {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "login_logs" (
+        "id" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "loginTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "ipAddress" TEXT,
+        "userAgent" TEXT,
+        "success" BOOLEAN NOT NULL DEFAULT true,
+        CONSTRAINT "login_logs_pkey" PRIMARY KEY ("id")
+      );
+    `)
+    // Create indexes if they don't exist
+    await db.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "login_logs_userId_idx" ON "login_logs"("userId");
+    `).catch(() => {})
+    await db.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "login_logs_loginTime_idx" ON "login_logs"("loginTime");
+    `).catch(() => {})
+  } catch (error) {
+    console.error("Failed to ensure login_logs table:", error)
+  }
+}
+
+/**
  * Ensures the `dsr_reports` table exists in the database.
  * Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
  * This is needed because Prisma migrations don't auto-run on Vercel.

@@ -3,21 +3,38 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { db } from "@/lib/db"
 import { compare } from "bcrypt"
 import { randomUUID } from "crypto"
-import { ensureDsrEnabledColumn } from "@/lib/dsr-db"
+import { ensureDsrEnabledColumn, ensureLoginLogsTable } from "@/lib/dsr-db"
 
-// Helper function to create login log
+// Helper function to create login log (using raw SQL for reliability)
 async function createLoginLog(userId: string, success: boolean) {
   try {
-    await db.loginLog.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        success,
-        loginTime: new Date()
-      }
-    })
+    // First ensure the login_logs table exists
+    await ensureLoginLogsTable()
+    
+    // Use raw SQL to insert login log
+    await db.$executeRawUnsafe(
+      `INSERT INTO "login_logs" ("id", "userId", "loginTime", "success") VALUES ($1, $2, $3, $4);`,
+      randomUUID(),
+      userId,
+      new Date(),
+      success
+    )
+    console.log(`Login log created for user ${userId}, success: ${success}`)
   } catch (error) {
     console.error("Failed to create login log:", error)
+    // Fallback: try Prisma
+    try {
+      await db.loginLog.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          success,
+          loginTime: new Date()
+        }
+      })
+    } catch (prismaErr) {
+      console.error("Prisma login log also failed:", prismaErr)
+    }
   }
 }
 
@@ -68,15 +85,14 @@ export const authOptions: NextAuthOptions = {
         await createLoginLog(user.id, true)
         console.log("Login successful for user:", user.id)
         
-        // Ensure dsrEnabled column exists, then read its value
+        // Ensure dsrEnabled column exists, then read its value (using raw SQL)
         let dsrEnabled = false
         try {
           await ensureDsrEnabledColumn()
-          const freshUser = await db.user.findUnique({
-            where: { id: user.id },
-            select: { dsrEnabled: true }
-          })
-          dsrEnabled = freshUser?.dsrEnabled ?? false
+          const result = await db.$queryRaw<Array<{ dsrEnabled: boolean }>>`
+            SELECT COALESCE("dsrEnabled", false) as "dsrEnabled" FROM "users" WHERE "id" = ${user.id};
+          `
+          dsrEnabled = result[0]?.dsrEnabled ?? false
         } catch (e) {
           console.error("Failed to read dsrEnabled:", e)
         }
