@@ -324,7 +324,7 @@ export function DsrForm() {
                       <TableRow key={report.id}>
                         <TableCell className="font-medium">#{report.serialNo}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {format(new Date(report.createdAt), "dd/MM/yyyy, hh:mm a")}
+                          {format(new Date(report.createdAt), "dd MMMM yyyy, hh:mm a")}
                         </TableCell>
                         <TableCell className="font-medium">{report.counterName}</TableCell>
                         <TableCell className="whitespace-nowrap">{report.mobileNo}</TableCell>
@@ -349,7 +349,7 @@ export function DsrForm() {
                           <p className="font-medium truncate">{report.counterName}</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(report.createdAt), "dd/MM/yyyy, hh:mm a")}
+                          {format(new Date(report.createdAt), "dd MMMM yyyy, hh:mm a")}
                         </p>
                       </div>
                     </div>

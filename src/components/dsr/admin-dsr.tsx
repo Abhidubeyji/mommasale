@@ -33,10 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ClipboardList, Download, Trash2, MapPin, Search, CalendarX } from "lucide-react"
+import { ClipboardList, Download, Trash2, MapPin, Search, CalendarX, Calendar as CalendarIcon } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import * as XLSX from "xlsx"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 interface DsrReport {
   id: string
@@ -140,7 +143,7 @@ export function AdminDsr() {
 
       const excelData = filteredForExport.map((report, idx) => ({
         "S.No": idx + 1,
-        "Date": format(new Date(report.createdAt), "dd/MM/yyyy"),
+        "Date": format(new Date(report.createdAt), "dd MMMM yyyy"),
         "Time": format(new Date(report.createdAt), "hh:mm:ss a"),
         "Sales Person": report.user.name,
         "Counter Name": report.counterName,
@@ -355,24 +358,52 @@ export function AdminDsr() {
               </SelectContent>
             </Select>
             <div>
-              <Label htmlFor="startDate" className="sr-only">Start Date</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-10"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-10 w-full justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(new Date(startDate), "dd MMMM yyyy") : "Start Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate ? new Date(startDate) : undefined}
+                    onSelect={(date) => setStartDate(date ? format(date, "yyyy-MM-dd") : "")}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
-              <Label htmlFor="endDate" className="sr-only">End Date</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-10"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-10 w-full justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(new Date(endDate), "dd MMMM yyyy") : "End Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate ? new Date(endDate) : undefined}
+                    onSelect={(date) => setEndDate(date ? format(date, "yyyy-MM-dd") : "")}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </CardContent>
@@ -417,7 +448,7 @@ export function AdminDsr() {
                       <TableRow key={report.id}>
                         <TableCell className="font-medium">#{report.serialNo}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {format(new Date(report.createdAt), "dd/MM/yyyy")}
+                          {format(new Date(report.createdAt), "dd MMMM yyyy")}
                           <br />
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(report.createdAt), "hh:mm a")}
@@ -474,7 +505,7 @@ export function AdminDsr() {
                           <p className="font-medium truncate">{report.counterName}</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {report.user.name} • {format(new Date(report.createdAt), "dd/MM/yyyy, hh:mm a")}
+                          {report.user.name} • {format(new Date(report.createdAt), "dd MMMM yyyy, hh:mm a")}
                         </p>
                       </div>
                       <Button
@@ -565,64 +596,84 @@ export function AdminDsr() {
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="bulkDeleteStartDate" className="text-sm">Start Date (dd/mm/yyyy)</Label>
-              <Input
-                id="bulkDeleteStartDate"
-                type="text"
-                value={bulkDeleteStartDate}
-                onChange={(e) => {
-                  // Allow only digits and /
-                  let val = e.target.value.replace(/[^\d/]/g, "")
-                  // Auto-format: insert / after 2 and 5 characters
-                  if (val.length === 2 && !val.includes("/")) val = val + "/"
-                  if (val.length === 5 && val.split("/").length === 2) val = val + "/"
-                  // Limit to 10 characters (dd/mm/yyyy)
-                  if (val.length > 10) val = val.slice(0, 10)
-                  setBulkDeleteStartDate(val)
-                }}
-                onBlur={() => {
-                  // Convert dd/mm/yyyy to yyyy-mm-dd for storage
-                  if (bulkDeleteStartDate && bulkDeleteStartDate.includes("/")) {
-                    const parts = bulkDeleteStartDate.split("/")
-                    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
-                      const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
-                      setBulkDeleteStartDate(iso)
-                    }
-                  }
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-9"
-                maxLength={10}
-              />
+              <Label className="text-sm">Start Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full justify-start text-left font-normal",
+                      !bulkDeleteStartDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {bulkDeleteStartDate
+                      ? (bulkDeleteStartDate.includes("/")
+                          ? (() => {
+                              const [dd, mm, yyyy] = bulkDeleteStartDate.split("/")
+                              return format(new Date(`${yyyy}-${mm}-${dd}`), "dd MMMM yyyy")
+                            })()
+                          : format(new Date(bulkDeleteStartDate), "dd MMMM yyyy"))
+                      : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={(() => {
+                      if (!bulkDeleteStartDate) return undefined
+                      if (bulkDeleteStartDate.includes("/")) {
+                        const [dd, mm, yyyy] = bulkDeleteStartDate.split("/")
+                        return new Date(`${yyyy}-${mm}-${dd}`)
+                      }
+                      return new Date(bulkDeleteStartDate)
+                    })()}
+                    onSelect={(date) => setBulkDeleteStartDate(date ? format(date, "yyyy-MM-dd") : "")}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="bulkDeleteEndDate" className="text-sm">End Date (dd/mm/yyyy)</Label>
-              <Input
-                id="bulkDeleteEndDate"
-                type="text"
-                value={bulkDeleteEndDate}
-                onChange={(e) => {
-                  let val = e.target.value.replace(/[^\d/]/g, "")
-                  if (val.length === 2 && !val.includes("/")) val = val + "/"
-                  if (val.length === 5 && val.split("/").length === 2) val = val + "/"
-                  if (val.length > 10) val = val.slice(0, 10)
-                  setBulkDeleteEndDate(val)
-                }}
-                onBlur={() => {
-                  if (bulkDeleteEndDate && bulkDeleteEndDate.includes("/")) {
-                    const parts = bulkDeleteEndDate.split("/")
-                    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
-                      const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
-                      setBulkDeleteEndDate(iso)
-                    }
-                  }
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-9"
-                maxLength={10}
-              />
+              <Label className="text-sm">End Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full justify-start text-left font-normal",
+                      !bulkDeleteEndDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {bulkDeleteEndDate
+                      ? (bulkDeleteEndDate.includes("/")
+                          ? (() => {
+                              const [dd, mm, yyyy] = bulkDeleteEndDate.split("/")
+                              return format(new Date(`${yyyy}-${mm}-${dd}`), "dd MMMM yyyy")
+                            })()
+                          : format(new Date(bulkDeleteEndDate), "dd MMMM yyyy"))
+                      : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={(() => {
+                      if (!bulkDeleteEndDate) return undefined
+                      if (bulkDeleteEndDate.includes("/")) {
+                        const [dd, mm, yyyy] = bulkDeleteEndDate.split("/")
+                        return new Date(`${yyyy}-${mm}-${dd}`)
+                      }
+                      return new Date(bulkDeleteEndDate)
+                    })()}
+                    onSelect={(date) => setBulkDeleteEndDate(date ? format(date, "yyyy-MM-dd") : "")}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
           {(!bulkDeleteStartDate && !bulkDeleteEndDate) && (
