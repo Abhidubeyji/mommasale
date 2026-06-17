@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update user (Admin only)
+// PUT - Update user (Admin only) - RAW SQL for dsrEnabled
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -163,9 +163,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Ensure the dsrEnabled column exists before updating
-    await ensureDsrEnabledColumn()
-
     const body = await request.json()
     const { id, name, role, isActive, canExport, dsrEnabled, password } = body
 
@@ -173,68 +170,80 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
-    const updateData: Record<string, unknown> = {}
-    if (name !== undefined) updateData.name = name
-    if (role !== undefined) updateData.role = role
-    if (isActive !== undefined) updateData.isActive = isActive
-    if (canExport !== undefined) updateData.canExport = canExport
-    if (dsrEnabled !== undefined) updateData.dsrEnabled = dsrEnabled
+    await ensureDsrEnabledColumn()
+
+    // STEP 1: Update non-dsrEnabled fields using Prisma
+    const prismaUpdateData: Record<string, unknown> = {}
+    if (name !== undefined) prismaUpdateData.name = name
+    if (role !== undefined) prismaUpdateData.role = role
+    if (isActive !== undefined) prismaUpdateData.isActive = isActive
+    if (canExport !== undefined) prismaUpdateData.canExport = canExport
     if (password) {
-      updateData.password = await hash(password, 10)
+      prismaUpdateData.password = await hash(password, 10)
     }
 
-    let user
-    try {
-      user = await db.user.update({
-        where: { id },
-        data: updateData
-      })
-    } catch (updateError) {
-      console.error("Prisma update failed, trying raw SQL for dsrEnabled:", updateError)
-      // If Prisma fails (likely due to dsrEnabled column missing), 
-      // try updating without dsrEnabled first, then use raw SQL for dsrEnabled
-      const { dsrEnabled: _dsrVal, ...restData } = updateData
-      void _dsrVal
-      if (Object.keys(restData).length > 0) {
+    if (Object.keys(prismaUpdateData).length > 0) {
+      try {
         await db.user.update({
           where: { id },
-          data: restData
+          data: prismaUpdateData
         })
+      } catch (prismaErr) {
+        console.error("Prisma update failed:", prismaErr)
       }
-      // Now try raw SQL for dsrEnabled
-      if (dsrEnabled !== undefined) {
-        try {
-          await ensureDsrEnabledColumn()
-          await db.$executeRawUnsafe(`UPDATE "users" SET "dsrEnabled" = ${dsrEnabled ? 'TRUE' : 'FALSE'} WHERE "id" = $1;`, id)
-        } catch (e) {
-          console.error("Raw SQL update for dsrEnabled also failed:", e)
-        }
+    }
+
+    // STEP 2: Update dsrEnabled using RAW SQL
+    if (dsrEnabled !== undefined) {
+      try {
+        await ensureDsrEnabledColumn()
+        const result = await db.$executeRawUnsafe(
+          `UPDATE "users" SET "dsrEnabled" = $1 WHERE "id" = $2;`,
+          dsrEnabled === true,
+          id
+        )
+        console.log(`Raw SQL update for dsrEnabled=${dsrEnabled} succeeded, rows: ${result}`)
+      } catch (rawErr) {
+        console.error("Raw SQL update failed:", rawErr)
+        return NextResponse.json({ 
+          error: "Failed to update DSR status", 
+          details: String(rawErr) 
+        }, { status: 500 })
       }
-      // Re-fetch the user
-      user = await db.user.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          isActive: true,
-          canExport: true,
-          dsrEnabled: true,
-        }
-      })
+    }
+
+    // STEP 3: Fetch updated user using raw SQL
+    const updatedUser = await db.$queryRaw<Array<{
+      id: string
+      name: string
+      role: string
+      isActive: boolean
+      canExport: boolean
+      dsrEnabled: boolean
+    }>>`
+      SELECT id, name, role, "isActive", "canExport", 
+             COALESCE("dsrEnabled", false) as "dsrEnabled"
+      FROM "users" WHERE "id" = ${id};
+    `
+
+    if (updatedUser.length === 0) {
+      return NextResponse.json({ error: "User not found after update" }, { status: 404 })
     }
 
     return NextResponse.json({
-      id: user?.id,
-      name: user?.name,
-      role: user?.role,
-      isActive: user?.isActive,
-      canExport: user?.canExport,
-      dsrEnabled: (user as { dsrEnabled?: boolean })?.dsrEnabled ?? false
+      id: updatedUser[0].id,
+      name: updatedUser[0].name,
+      role: updatedUser[0].role,
+      isActive: updatedUser[0].isActive,
+      canExport: updatedUser[0].canExport,
+      dsrEnabled: updatedUser[0].dsrEnabled
     })
   } catch (error) {
     console.error("Update user error:", error)
-    return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
+    return NextResponse.json({ 
+      error: "Failed to update user", 
+      details: String(error) 
+    }, { status: 500 })
   }
 }
 
