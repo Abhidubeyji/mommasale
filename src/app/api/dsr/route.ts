@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       ? (searchParams.get("userId") || session.user.id)
       : session.user.id
 
-    // Use raw SQL to fetch reports
+    // Use raw SQL to fetch reports - ordered by serialNo ASCENDING (1, 2, 3...)
     const reports = await db.$queryRaw<Array<{
       id: string
       serialNo: number
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
              latitude, longitude, "locationText", "createdAt"
       FROM dsr_reports 
       WHERE "userId" = ${targetUserId}
-      ORDER BY "createdAt" DESC
+      ORDER BY "serialNo" ASC
       LIMIT ${limit} OFFSET ${offset};
     `
 

@@ -70,6 +70,7 @@ export function AdminDsr() {
   const [reports, setReports] = useState<DsrReport[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [userFilter, setUserFilter] = useState("all")
   const [startDate, setStartDate] = useState("")
@@ -91,6 +92,14 @@ export function AdminDsr() {
     fetchReports()
   }, [userFilter, startDate, endDate])
 
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchReports(true)
+    }, 30000) // 30 seconds
+    return () => clearInterval(interval)
+  }, [userFilter, startDate, endDate])
+
   const fetchUsers = async () => {
     try {
       const res = await fetch("/api/users")
@@ -104,24 +113,39 @@ export function AdminDsr() {
     }
   }
 
-  const fetchReports = async () => {
+  const fetchReports = async (isRefresh = false) => {
     try {
-      setLoading(true)
+      if (isRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
       const params = new URLSearchParams()
       if (userFilter !== "all") params.set("userId", userFilter)
       if (startDate) params.set("startDate", startDate)
       if (endDate) params.set("endDate", endDate)
 
-      const res = await fetch(`/api/admin/dsr?${params.toString()}`)
+      // Add cache-busting timestamp to avoid cached responses
+      params.set("_t", Date.now().toString())
+
+      const res = await fetch(`/api/admin/dsr?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        }
+      })
       if (res.ok) {
         const data = await res.json()
         setReports(data.reports || [])
       }
     } catch (error) {
       console.error("Error fetching DSR reports:", error)
-      toast.error("Failed to fetch DSR reports")
+      if (!isRefresh) {
+        toast.error("Failed to fetch DSR reports")
+      }
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -244,7 +268,7 @@ export function AdminDsr() {
       if (res.ok) {
         const data = await res.json()
         toast.success(data.message || "Reports deleted successfully")
-        fetchReports()
+        await fetchReports(true)
         setBulkDeleteDialogOpen(false)
         setBulkDeleteStartDate("")
         setBulkDeleteEndDate("")
@@ -267,7 +291,7 @@ export function AdminDsr() {
       const res = await fetch(`/api/admin/dsr?id=${reportToDelete.id}`, { method: "DELETE" })
       if (res.ok) {
         toast.success("DSR report deleted successfully")
-        fetchReports()
+        await fetchReports(true)
         setDeleteDialogOpen(false)
         setReportToDelete(null)
       } else {

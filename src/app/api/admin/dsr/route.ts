@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "1000")
     const offset = parseInt(searchParams.get("offset") || "0")
 
-    // Use raw SQL to fetch reports with user info
+    // Use raw SQL - ordered by serialNo ASCENDING (1, 2, 3...)
     let query = `
       SELECT 
         d.id, 
@@ -53,18 +53,17 @@ export async function GET(request: NextRequest) {
       query += ` AND d."userId" = $${paramIdx++}`
       params.push(userId)
     }
+    // Use DATE() to compare only date part - avoids timezone issues
     if (startDate) {
-      query += ` AND d."createdAt" >= $${paramIdx++}`
-      params.push(new Date(startDate))
+      query += ` AND DATE(d."createdAt") >= $${paramIdx++}::date`
+      params.push(startDate)
     }
     if (endDate) {
-      const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999)
-      query += ` AND d."createdAt" <= $${paramIdx++}`
-      params.push(end)
+      query += ` AND DATE(d."createdAt") <= $${paramIdx++}::date`
+      params.push(endDate)
     }
 
-    query += ` ORDER BY d."createdAt" DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`
+    query += ` ORDER BY d."serialNo" ASC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`
     params.push(limit, offset)
 
     const reports = await db.$queryRawUnsafe(query, ...params)
@@ -78,14 +77,12 @@ export async function GET(request: NextRequest) {
       countParams.push(userId)
     }
     if (startDate) {
-      countQuery += ` AND "createdAt" >= $${countIdx++}`
-      countParams.push(new Date(startDate))
+      countQuery += ` AND DATE("createdAt") >= $${countIdx++}::date`
+      countParams.push(startDate)
     }
     if (endDate) {
-      const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999)
-      countQuery += ` AND "createdAt" <= $${countIdx++}`
-      countParams.push(end)
+      countQuery += ` AND DATE("createdAt") <= $${countIdx++}::date`
+      countParams.push(endDate)
     }
 
     const totalResult = await db.$queryRawUnsafe(countQuery, ...countParams)
@@ -135,19 +132,18 @@ export async function DELETE(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Use DATE() to compare only date part - avoids timezone issues
     let query = `DELETE FROM dsr_reports WHERE 1=1`
     const params: unknown[] = []
     let paramIdx = 1
 
     if (startDate) {
-      query += ` AND "createdAt" >= $${paramIdx++}`
-      params.push(new Date(startDate))
+      query += ` AND DATE("createdAt") >= $${paramIdx++}::date`
+      params.push(startDate)
     }
     if (endDate) {
-      const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999)
-      query += ` AND "createdAt" <= $${paramIdx++}`
-      params.push(end)
+      query += ` AND DATE("createdAt") <= $${paramIdx++}::date`
+      params.push(endDate)
     }
     if (userId && userId !== "all") {
       query += ` AND "userId" = $${paramIdx++}`
