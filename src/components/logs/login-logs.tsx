@@ -108,6 +108,28 @@ export function LoginLogs() {
     }
   }
 
+  const handleDeleteAllLogs = async () => {
+    if (!confirm("⚠️ WARNING: This will delete ALL login logs permanently!\n\nAre you absolutely sure?")) {
+      return
+    }
+    if (!confirm("Last chance! This action cannot be undone. Delete ALL login logs?")) {
+      return
+    }
+
+    try {
+      const res = await fetch("/api/login-logs?days=0", { method: "DELETE" })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message)
+        fetchLogs()
+      } else {
+        toast.error("Failed to delete all logs")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
+    }
+  }
+
   // Filter logs by search term
   const filteredLogs = logs.filter(log => {
     if (!searchTerm) return true
@@ -139,10 +161,16 @@ export function LoginLogs() {
         </div>
 
         {session?.user?.role === "ADMIN" && (
-          <Button variant="outline" onClick={handleClearOldLogs} className="text-red-600 border-red-200">
-            <Trash2 className="mr-2 h-4 w-4" />
-            Clear Old Logs
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={handleClearOldLogs} className="text-red-600 border-red-200">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear Old Logs (30d+)
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteAllLogs} className="bg-red-600 hover:bg-red-700">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete All Logs
+            </Button>
+          </div>
         )}
       </div>
 

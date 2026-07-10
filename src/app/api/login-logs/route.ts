@@ -99,7 +99,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE - Clear old login logs (Admin only) - using raw SQL
+// DELETE - Clear login logs (Admin only) - using raw SQL
+// ?days=0 → delete ALL logs, ?days=30 → delete older than 30 days
+// ?userId=xxx → delete only for specific user
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -111,17 +113,43 @@ export async function DELETE(request: NextRequest) {
     await ensureLoginLogsTable()
 
     const { searchParams } = new URL(request.url)
-    const daysToKeep = parseInt(searchParams.get("days") || "30")
+    const daysParam = searchParams.get("days")
+    const userId = searchParams.get("userId")
 
-    // Calculate cutoff date
+    // If days=0, delete ALL logs (with optional userId filter)
+    if (daysParam === "0") {
+      let result
+      if (userId) {
+        result = await db.$executeRawUnsafe(
+          `DELETE FROM "login_logs" WHERE "userId" = $1;`,
+          userId
+        )
+      } else {
+        result = await db.$executeRawUnsafe(`DELETE FROM "login_logs";`)
+      }
+      return NextResponse.json({ 
+        message: `Deleted all ${result} login logs`
+      })
+    }
+
+    // Otherwise delete logs older than X days
+    const daysToKeep = parseInt(daysParam || "30")
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
 
-    // Use raw SQL to delete old logs
-    const result = await db.$executeRawUnsafe(
-      `DELETE FROM "login_logs" WHERE "loginTime" < $1;`,
-      cutoffDate
-    )
+    let result
+    if (userId) {
+      result = await db.$executeRawUnsafe(
+        `DELETE FROM "login_logs" WHERE "loginTime" < $1 AND "userId" = $2;`,
+        cutoffDate,
+        userId
+      )
+    } else {
+      result = await db.$executeRawUnsafe(
+        `DELETE FROM "login_logs" WHERE "loginTime" < $1;`,
+        cutoffDate
+      )
+    }
 
     return NextResponse.json({ 
       message: `Deleted ${result} login logs older than ${daysToKeep} days` 
