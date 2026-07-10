@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session || session.user.role === "VIEWER") {
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -187,22 +187,33 @@ export async function POST(request: NextRequest) {
         }
       }
     })
-// Send push notification to admin about new order
-try {
-  await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/notify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      title: '🛒 नया Order मिला!',
-      body: `Order #${orderId} - ${order.shopkeeper.shopName} - ₹${Math.round(totalAmount)}`,
-      orderId: orderId,
-      amount: Math.round(totalAmount),
-      shopkeeperName: order.shopkeeper.shopName
-    })
-  })
-} catch (notifyError) {
-  console.error('Error sending notification:', notifyError)
-}
+
+    // Send push notification to admin about new order
+    try {
+      const notificationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: '🛒 नया Order मिला!',
+          body: `Order #${orderId} - ${order.shopkeeper.shopName} - ₹${Math.round(totalAmount)}`,
+          orderId: orderId,
+          amount: Math.round(totalAmount),
+          shopkeeperName: order.shopkeeper.shopName
+        })
+      })
+
+      if (!notificationResponse.ok) {
+        console.error('Failed to send notification:', await notificationResponse.text())
+      } else {
+        console.log('Notification sent successfully for order:', orderId)
+      }
+    } catch (notifyError) {
+      // Don't fail the order creation if notification fails
+      console.error('Error sending notification:', notifyError)
+    }
+
     return NextResponse.json(order)
   } catch (error) {
     console.error("Create order error:", error)
@@ -215,12 +226,17 @@ export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
+    console.log("PUT /api/orders - Session:", session ? { id: session.user.id, role: session.user.role } : null)
+    
     if (!session) {
+      console.log("PUT /api/orders - Unauthorized: No session")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
-    const { id, status, shopkeeperId, items, notes } = body
+    console.log("PUT /api/orders - Request body:", body)
+    
+    const { id, status, shopkeeperId, items, notes, roundOff } = body
 
     if (!id) {
       return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
@@ -237,7 +253,12 @@ export async function PUT(request: NextRequest) {
 
     // If updating items (full edit)
     if (items && Array.isArray(items)) {
-      // Admin can edit ANY order including DISPATCHED
+      // Cannot edit DISPATCHED orders - only delete is allowed
+      if (existingOrder.status === "DISPATCHED") {
+        return NextResponse.json({ error: "Cannot edit dispatched orders. Only delete is allowed." }, { status: 400 })
+      }
+      
+      // Admin can edit PENDING, APPROVED, REJECTED orders
       // Sales users can only edit PENDING orders (before admin approval)
       if (session.user.role === "SALES") {
         if (existingOrder.status !== "PENDING" && existingOrder.status !== "REJECTED") {
@@ -247,9 +268,6 @@ export async function PUT(request: NextRequest) {
         if (existingOrder.userId !== session.user.id) {
           return NextResponse.json({ error: "You can only edit your own orders" }, { status: 401 })
         }
-      }
-      if (session.user.role === "VIEWER") {
-        return NextResponse.json({ error: "Viewers cannot edit orders" }, { status: 401 })
       }
 
       // Calculate new totals
@@ -292,31 +310,6 @@ export async function PUT(request: NextRequest) {
         where: { orderId: id }
       })
 
-      // If order was DISPATCHED, we need to revert the outstanding balance
-      // because the order is being reset to PENDING for re-approval
-      if (existingOrder.status === "DISPATCHED") {
-        const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
-        const grandTotal = Math.round(existingOrder.totalAmount)
-        
-        const outstanding = await db.outstanding.findUnique({
-          where: { shopkeeperId: existingOrder.shopkeeperId }
-        })
-        
-        if (outstanding) {
-          await db.outstanding.update({
-            where: { shopkeeperId: existingOrder.shopkeeperId },
-            data: {
-              totalOrders: { decrement: existingOrder.totalAmount },
-              roundOff: { decrement: orderRoundOff },
-              balance: { decrement: grandTotal },
-              lastUpdated: new Date()
-            }
-          })
-        }
-      }
-
-      // When items are updated, reset status to PENDING for re-approval
-      // This applies to all orders including DISPATCHED
       const order = await db.order.update({
         where: { id },
         data: {
@@ -326,9 +319,6 @@ export async function PUT(request: NextRequest) {
           adminDiscount: adminDiscountTotal,
           extraDiscount: extraDiscountTotal,
           totalAmount,
-          status: "PENDING",
-          approvedAt: null,
-          dispatchedAt: null,
           items: {
             create: newOrderItems
           }
@@ -351,6 +341,8 @@ export async function PUT(request: NextRequest) {
 
     // Status update
     if (status) {
+      console.log("Status update request:", { id, status, currentStatus: existingOrder.status, userRole: session.user.role })
+      
       // Status transition rules
       if (status === "APPROVED" || status === "REJECTED") {
         // Admin and Viewer can approve/reject
@@ -360,15 +352,6 @@ export async function PUT(request: NextRequest) {
         if (existingOrder.status !== "PENDING") {
           return NextResponse.json({ error: "Can only approve/reject pending orders" }, { status: 400 })
         }
-        // Validate ALL items have qty > 0 for approval
-        if (status === "APPROVED") {
-          console.log("APPROVE validation - items:", existingOrder.items.map(i => ({ qty: i.quantity })))
-          const hasZeroQtyItem = existingOrder.items.some(item => item.quantity <= 0)
-          console.log("hasZeroQtyItem:", hasZeroQtyItem)
-          if (hasZeroQtyItem) {
-            return NextResponse.json({ error: "Cannot approve order. All items must have quantity greater than 0" }, { status: 400 })
-          }
-        }
       }
 
       if (status === "DISPATCHED") {
@@ -377,44 +360,7 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: "Only admin or viewer can dispatch orders" }, { status: 401 })
         }
         if (existingOrder.status !== "APPROVED") {
-          return NextResponse.json({ error: "Can only dispatch approved orders" }, { status: 400 })
-        }
-        // Validate ALL items have qty > 0 for dispatch
-        console.log("DISPATCH validation - items:", existingOrder.items.map(i => ({ qty: i.quantity })))
-        const hasZeroQtyItem = existingOrder.items.some(item => item.quantity <= 0)
-        console.log("hasZeroQtyItem:", hasZeroQtyItem)
-        if (hasZeroQtyItem) {
-          return NextResponse.json({ error: "Cannot dispatch order. All items must have quantity greater than 0" }, { status: 400 })
-        }
-      }
-
-      // Handle setting status back to PENDING (from APPROVED or DISPATCHED)
-      if (status === "PENDING") {
-        // Admin and Viewer can set to pending
-        if (session.user.role !== "ADMIN" && session.user.role !== "VIEWER") {
-          return NextResponse.json({ error: "Only admin or viewer can change order status" }, { status: 401 })
-        }
-        
-        // If order was DISPATCHED, revert the outstanding balance
-        if (existingOrder.status === "DISPATCHED") {
-          const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
-          const grandTotal = Math.round(existingOrder.totalAmount)
-          
-          const outstanding = await db.outstanding.findUnique({
-            where: { shopkeeperId: existingOrder.shopkeeperId }
-          })
-          
-          if (outstanding) {
-            await db.outstanding.update({
-              where: { shopkeeperId: existingOrder.shopkeeperId },
-              data: {
-                totalOrders: { decrement: existingOrder.totalAmount },
-                roundOff: { decrement: orderRoundOff },
-                balance: { decrement: grandTotal },
-                lastUpdated: new Date()
-              }
-            })
-          }
+          return NextResponse.json({ error: `Can only dispatch approved orders. Current status: ${existingOrder.status}` }, { status: 400 })
         }
       }
 
@@ -429,31 +375,36 @@ export async function PUT(request: NextRequest) {
         const orderRoundOff = Math.round(existingOrder.totalAmount) - existingOrder.totalAmount
         const grandTotal = Math.round(existingOrder.totalAmount)
 
-        // Update outstanding balance
-        const outstanding = await db.outstanding.findUnique({
-          where: { shopkeeperId: existingOrder.shopkeeperId }
-        })
+        // Update outstanding balance with proper error handling
+        try {
+          const outstanding = await db.outstanding.findUnique({
+            where: { shopkeeperId: existingOrder.shopkeeperId }
+          })
 
-        if (outstanding) {
-          await db.outstanding.update({
-            where: { shopkeeperId: existingOrder.shopkeeperId },
-            data: {
-              totalOrders: { increment: existingOrder.totalAmount },
-              roundOff: { increment: orderRoundOff },
-              balance: { increment: grandTotal },
-              lastUpdated: new Date()
-            }
-          })
-        } else {
-          await db.outstanding.create({
-            data: {
-              id: randomUUID(),
-              shopkeeperId: existingOrder.shopkeeperId,
-              totalOrders: existingOrder.totalAmount,
-              roundOff: orderRoundOff,
-              balance: grandTotal
-            }
-          })
+          if (outstanding) {
+            await db.outstanding.update({
+              where: { shopkeeperId: existingOrder.shopkeeperId },
+              data: {
+                totalOrders: { increment: existingOrder.totalAmount },
+                roundOff: { increment: orderRoundOff },
+                balance: { increment: grandTotal },
+                lastUpdated: new Date()
+              }
+            })
+          } else {
+            await db.outstanding.create({
+              data: {
+                id: randomUUID(),
+                shopkeeperId: existingOrder.shopkeeperId,
+                totalOrders: existingOrder.totalAmount,
+                roundOff: orderRoundOff,
+                balance: grandTotal
+              }
+            })
+          }
+        } catch (outstandingError) {
+          console.error("Error updating outstanding balance:", outstandingError)
+          // Continue with order status update even if outstanding update fails
         }
 
         // Link unlinked advance payments to this order
@@ -467,10 +418,6 @@ export async function PUT(request: NextRequest) {
             orderId: existingOrder.id
           }
         })
-      } else if (status === "PENDING") {
-        // Reset approval and dispatch timestamps when setting back to PENDING
-        updateData.approvedAt = null
-        updateData.dispatchedAt = null
       }
 
       const order = await db.order.update({
@@ -492,6 +439,34 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(order)
     }
 
+    // Round off update - Admin and Viewer can update
+    if (roundOff !== undefined) {
+      console.log("PUT /api/orders - RoundOff update:", { id, roundOff, userRole: session.user.role })
+      
+      if (session.user.role !== "ADMIN" && session.user.role !== "VIEWER") {
+        return NextResponse.json({ error: "Only admin or viewer can update round off" }, { status: 401 })
+      }
+
+      const order = await db.order.update({
+        where: { id },
+        data: { roundOff: parseFloat(String(roundOff)) },
+        include: {
+          shopkeeper: true,
+          user: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              product: {
+                include: { category: true }
+              }
+            }
+          }
+        }
+      })
+
+      return NextResponse.json(order)
+    }
+
+    console.log("PUT /api/orders - No update data provided")
     return NextResponse.json({ error: "No update data provided" }, { status: 400 })
   } catch (error) {
     console.error("Update order error:", error)
@@ -504,12 +479,17 @@ export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
+    console.log("DELETE /api/orders - Session:", session ? { id: session.user.id, role: session.user.role } : null)
+    
     if (!session) {
+      console.log("DELETE /api/orders - Unauthorized: No session")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
+    
+    console.log("DELETE /api/orders - Order ID:", id)
 
     if (!id) {
       return NextResponse.json({ error: "Order ID required" }, { status: 400 })
@@ -570,7 +550,37 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Order deleted" })
     }
 
-    // Viewers cannot delete
+    // Viewers have full access - same as admin for deletion
+    if (session.user.role === "VIEWER") {
+      // If deleting a DISPATCHED order, revert the outstanding balance
+      if (order.status === "DISPATCHED") {
+        const orderRoundOff = Math.round(order.totalAmount) - order.totalAmount
+        const grandTotal = Math.round(order.totalAmount)
+        
+        const outstanding = await db.outstanding.findUnique({
+          where: { shopkeeperId: order.shopkeeperId }
+        })
+        
+        if (outstanding) {
+          await db.outstanding.update({
+            where: { shopkeeperId: order.shopkeeperId },
+            data: {
+              totalOrders: { decrement: order.totalAmount },
+              roundOff: { decrement: orderRoundOff },
+              balance: { decrement: grandTotal },
+              lastUpdated: new Date()
+            }
+          })
+        }
+      }
+      
+      await db.order.delete({
+        where: { id }
+      })
+      
+      return NextResponse.json({ message: "Order deleted" })
+    }
+
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   } catch (error) {
     console.error("Delete order error:", error)

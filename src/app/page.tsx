@@ -45,26 +45,26 @@ export default function Home() {
       case "dashboard":
         return <DashboardContent />
       case "users":
-        return session.user.role === "ADMIN" ? <UserManagement /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <UserManagement /> : <DashboardContent />
       case "categories":
-        return session.user.role === "ADMIN" ? <CategoryManagement /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <CategoryManagement /> : <DashboardContent />
 
       case "products":
         return <ProductManagement />
       case "shopkeepers":
-        return session.user.role !== "VIEWER" ? <ShopkeeperManagement /> : <DashboardContent />
+        return session.user.role !== "VIEWER" || session.user.role === "VIEWER" ? <ShopkeeperManagement /> : <DashboardContent />
       case "orders":
-        return session.user.role !== "VIEWER" ? <OrderManagement /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "SALES" || session.user.role === "VIEWER" ? <OrderManagement /> : <DashboardContent />
       case "payments":
-        return session.user.role !== "VIEWER" ? <PaymentManagement /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "SALES" || session.user.role === "VIEWER" ? <PaymentManagement /> : <DashboardContent />
       case "dsr":
         return session.user.role === "SALES" ? <DsrForm /> : <DashboardContent />
       case "adminDsr":
-        return session.user.role === "ADMIN" ? <AdminDsr /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <AdminDsr /> : <DashboardContent />
       case "loginLogs":
-        return session.user.role === "ADMIN" ? <LoginLogs /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <LoginLogs /> : <DashboardContent />
       case "backup":
-        return session.user.role === "ADMIN" ? <BackupRestore /> : <DashboardContent />
+        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <BackupRestore /> : <DashboardContent />
       default:
         return <DashboardContent />
     }
