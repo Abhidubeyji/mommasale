@@ -350,15 +350,17 @@ export function AdminDsr() {
           <p className="text-sm sm:text-base text-muted-foreground">View all sales DSR reports with location</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={handleBulkDeleteClick}
-            disabled={reports.length === 0}
-            variant="outline"
-            className="border-red-500 text-red-500 hover:bg-red-50"
+          {session?.user?.role === "ADMIN" && (
+            <Button
+              onClick={handleBulkDeleteClick}
+              disabled={reports.length === 0}
+              variant="outline"
+              className="border-red-500 text-red-500 hover:bg-red-50"
           >
             <CalendarX className="mr-2 h-4 w-4" />
             Delete by Date
           </Button>
+          )}
           <Button
             onClick={handleExport}
             disabled={exporting || reports.length === 0}
@@ -513,15 +515,17 @@ export function AdminDsr() {
                           )}
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteClick(report)}
-                            className="hover:bg-red-100 dark:hover:bg-gray-800"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          {session?.user?.role === "ADMIN" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteClick(report)}
+                              className="hover:bg-red-100 dark:hover:bg-gray-800"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -545,15 +549,17 @@ export function AdminDsr() {
                           {report.user.name} • {format(new Date(report.createdAt), "dd MMMM yyyy, hh:mm a")}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteClick(report)}
-                        className="hover:bg-red-100 dark:hover:bg-gray-800 shrink-0"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      {session?.user?.role === "ADMIN" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClick(report)}
+                          className="hover:bg-red-100 dark:hover:bg-gray-800 shrink-0"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 gap-1 text-sm">
                       <div>

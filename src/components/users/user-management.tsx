@@ -297,19 +297,20 @@ export function UserManagement() {
           <p className="text-sm sm:text-base text-muted-foreground">Manage system users and their permissions</p>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open)
-          if (!open) {
-            setEditingUser(null)
-            setFormData(initialFormState)
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
-              <Plus className="mr-2 h-4 w-4" />
-              Add User
-            </Button>
-          </DialogTrigger>
+        {session?.user?.role === "ADMIN" && (
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open)
+            if (!open) {
+              setEditingUser(null)
+              setFormData(initialFormState)
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
+                <Plus className="mr-2 h-4 w-4" />
+                Add User
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md w-[95vw] max-w-[95vw] sm:w-auto sm:max-w-md p-0">
             <form onSubmit={handleSubmit}>
               <DialogHeader className="p-4 sm:p-6 pb-0">
@@ -379,6 +380,7 @@ export function UserManagement() {
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <Card className="border-orange-200 dark:border-gray-800">
@@ -448,16 +450,17 @@ export function UserManagement() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      <div className="flex justify-end gap-1 sm:gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(user)}
-                          className="hover:bg-orange-100 dark:hover:bg-gray-800"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4 text-orange-500" />
-                        </Button>
+                      {session?.user?.role === "ADMIN" && (
+                        <div className="flex justify-end gap-1 sm:gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(user)}
+                            className="hover:bg-orange-100 dark:hover:bg-gray-800"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4 text-orange-500" />
+                          </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -507,6 +510,7 @@ export function UserManagement() {
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
