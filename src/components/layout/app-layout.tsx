@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
   { id: "dsr", label: "My DSR", icon: <ClipboardList className="h-5 w-5" />, roles: ["SALES"] },
   { id: "adminDsr", label: "DSR Reports", icon: <ClipboardList className="h-5 w-5" />, roles: ["ADMIN", "VIEWER"] },
   { id: "loginLogs", label: "Login Logs", icon: <History className="h-5 w-5" />, roles: ["ADMIN", "VIEWER"] },
-  { id: "backup", label: "Backup/Restore", icon: <Database className="h-5 w-5" />, roles: ["ADMIN", "VIEWER"] },
+  { id: "backup", label: "Backup/Restore", icon: <Database className="h-5 w-5" />, roles: ["ADMIN"] },
 ]
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {

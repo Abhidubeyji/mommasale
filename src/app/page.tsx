@@ -64,7 +64,7 @@ export default function Home() {
       case "loginLogs":
         return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <LoginLogs /> : <DashboardContent />
       case "backup":
-        return session.user.role === "ADMIN" || session.user.role === "VIEWER" ? <BackupRestore /> : <DashboardContent />
+        return session.user.role === "ADMIN" ? <BackupRestore /> : <DashboardContent />
       default:
         return <DashboardContent />
     }
