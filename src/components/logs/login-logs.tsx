@@ -96,14 +96,15 @@ export function LoginLogs() {
 
     try {
       const res = await fetch("/api/login-logs?days=30", { method: "DELETE" })
+      const data = await res.json()
       if (res.ok) {
-        const data = await res.json()
-        toast.success(data.message)
+        toast.success(data.message || "Old logs cleared")
         fetchLogs()
       } else {
-        toast.error("Failed to clear logs")
+        toast.error(data.error || data.details || "Failed to clear logs")
       }
     } catch (error) {
+      console.error("Clear logs error:", error)
       toast.error("An error occurred")
     }
   }
@@ -118,14 +119,15 @@ export function LoginLogs() {
 
     try {
       const res = await fetch("/api/login-logs?days=0", { method: "DELETE" })
+      const data = await res.json()
       if (res.ok) {
-        const data = await res.json()
-        toast.success(data.message)
+        toast.success(data.message || "All logs deleted")
         fetchLogs()
       } else {
-        toast.error("Failed to delete all logs")
+        toast.error(data.error || data.details || "Failed to delete all logs")
       }
     } catch (error) {
+      console.error("Delete all logs error:", error)
       toast.error("An error occurred")
     }
   }
@@ -136,13 +138,15 @@ export function LoginLogs() {
     }
     try {
       const res = await fetch(`/api/login-logs?id=${logId}`, { method: "DELETE" })
+      const data = await res.json()
       if (res.ok) {
-        toast.success("Login log deleted")
+        toast.success(data.message || "Login log deleted")
         fetchLogs()
       } else {
-        toast.error("Failed to delete log")
+        toast.error(data.error || data.details || "Failed to delete log")
       }
     } catch (error) {
+      console.error("Delete single log error:", error)
       toast.error("An error occurred")
     }
   }
