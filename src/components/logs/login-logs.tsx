@@ -130,6 +130,23 @@ export function LoginLogs() {
     }
   }
 
+  const handleDeleteSingleLog = async (logId: string) => {
+    if (!confirm("Delete this login log entry?")) {
+      return
+    }
+    try {
+      const res = await fetch(`/api/login-logs?id=${logId}`, { method: "DELETE" })
+      if (res.ok) {
+        toast.success("Login log deleted")
+        fetchLogs()
+      } else {
+        toast.error("Failed to delete log")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
+    }
+  }
+
   // Filter logs by search term
   const filteredLogs = logs.filter(log => {
     if (!searchTerm) return true
@@ -256,6 +273,9 @@ export function LoginLogs() {
                     <TableHead className="whitespace-nowrap">Role</TableHead>
                     <TableHead className="whitespace-nowrap">Login Time</TableHead>
                     <TableHead className="whitespace-nowrap">Status</TableHead>
+                    {session?.user?.role === "ADMIN" && (
+                      <TableHead className="text-right whitespace-nowrap">Action</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -274,11 +294,24 @@ export function LoginLogs() {
                           {log.success ? "Success" : "Failed"}
                         </Badge>
                       </TableCell>
+                      {session?.user?.role === "ADMIN" && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteSingleLog(log.id)}
+                            className="hover:bg-red-100 dark:hover:bg-gray-800"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                   {filteredLogs.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={session?.user?.role === "ADMIN" ? 6 : 5} className="text-center text-muted-foreground py-8">
                         No login logs found
                       </TableCell>
                     </TableRow>

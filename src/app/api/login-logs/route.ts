@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
 }
 
 // DELETE - Clear login logs (Admin only) - using raw SQL
-// ?days=0 → delete ALL logs, ?days=30 → delete older than 30 days
+// ?id=xxx → delete single log, ?days=0 → delete ALL logs, ?days=30 → delete older than 30 days
 // ?userId=xxx → delete only for specific user
 export async function DELETE(request: NextRequest) {
   try {
@@ -113,8 +113,18 @@ export async function DELETE(request: NextRequest) {
     await ensureLoginLogsTable()
 
     const { searchParams } = new URL(request.url)
+    const logId = searchParams.get("id")
     const daysParam = searchParams.get("days")
     const userId = searchParams.get("userId")
+
+    // Single log delete (?id=xxx)
+    if (logId) {
+      await db.$executeRawUnsafe(
+        `DELETE FROM "login_logs" WHERE "id" = $1;`,
+        logId
+      )
+      return NextResponse.json({ message: "Login log deleted" })
+    }
 
     // If days=0, delete ALL logs (with optional userId filter)
     if (daysParam === "0") {
