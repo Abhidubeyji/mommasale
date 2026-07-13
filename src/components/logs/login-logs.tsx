@@ -90,10 +90,6 @@ export function LoginLogs() {
   }
 
   const handleClearOldLogs = async () => {
-    if (!confirm("Are you sure you want to delete login logs older than 30 days?")) {
-      return
-    }
-
     try {
       const res = await fetch("/api/login-logs?days=30", { method: "DELETE" })
       const data = await res.json()
@@ -110,13 +106,6 @@ export function LoginLogs() {
   }
 
   const handleDeleteAllLogs = async () => {
-    if (!confirm("⚠️ WARNING: This will delete ALL login logs permanently!\n\nAre you absolutely sure?")) {
-      return
-    }
-    if (!confirm("Last chance! This action cannot be undone. Delete ALL login logs?")) {
-      return
-    }
-
     try {
       const res = await fetch("/api/login-logs?days=0", { method: "DELETE" })
       const data = await res.json()
@@ -133,9 +122,6 @@ export function LoginLogs() {
   }
 
   const handleDeleteSingleLog = async (logId: string) => {
-    if (!confirm("Delete this login log entry?")) {
-      return
-    }
     try {
       const res = await fetch(`/api/login-logs?id=${logId}`, { method: "DELETE" })
       const data = await res.json()
